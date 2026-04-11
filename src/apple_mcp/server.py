@@ -99,10 +99,14 @@ async def get_sales_report_tool(
 @mcp.tool(name="get_subscription_report")
 async def get_subscription_report_tool(
     report_date: Annotated[str, "Report date in YYYY-MM-DD format"],
-    report_sub_type: Annotated[
+    report_type: Annotated[
         Literal["SUBSCRIPTION", "SUBSCRIPTION_EVENT", "SUBSCRIBER", "SUBSCRIPTION_OFFER_REDEMPTION"],
-        "Report type (reportType and reportSubType use the same value)",
+        "Subscription report type",
     ] = "SUBSCRIPTION",
+    report_sub_type: Annotated[
+        Literal["SUMMARY", "DETAILED", "SUMMARY_INSTALL_TYPE", "SUMMARY_TERRITORY", "SUMMARY_CHANNEL"],
+        "Report sub-type",
+    ] = "SUMMARY",
     date_type: Annotated[
         Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"],
         "Report frequency",
@@ -110,7 +114,7 @@ async def get_subscription_report_tool(
 ) -> str:
     """Get subscription report data (active subscribers, trials, events)."""
     try:
-        result = await get_subscription_report(_get_client(), report_date, report_sub_type, date_type)
+        result = await get_subscription_report(_get_client(), report_date, report_type, report_sub_type, date_type)
         return _result(result)
     except ApiError as e:
         return e.to_user_message()
