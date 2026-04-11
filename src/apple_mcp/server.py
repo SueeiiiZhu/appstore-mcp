@@ -100,8 +100,8 @@ async def get_sales_report_tool(
 async def get_subscription_report_tool(
     report_date: Annotated[str, "Report date in YYYY-MM-DD format"],
     report_sub_type: Annotated[
-        Literal["SUBSCRIPTION", "SUBSCRIPTION_EVENT", "SUBSCRIBER"],
-        "Subscription report sub-type",
+        Literal["SUBSCRIPTION", "SUBSCRIPTION_EVENT", "SUBSCRIBER", "SUBSCRIPTION_OFFER_REDEMPTION"],
+        "Report type (reportType and reportSubType use the same value)",
     ] = "SUBSCRIPTION",
     date_type: Annotated[
         Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"],

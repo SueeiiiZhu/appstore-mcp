@@ -111,6 +111,6 @@ def parse_finance_report(raw: str) -> list[dict[str, Any]]:
 
 
 # Product Type Identifier sets
-INSTALL_PRODUCT_TYPES = {"1", "1-B", "1-F", "1T", "F1"}
-UPDATE_PRODUCT_TYPES = {"7", "7-F", "7T"}
-REDOWNLOAD_PRODUCT_TYPES = {"3", "3-F", "3T"}
+INSTALL_PRODUCT_TYPES = {"1", "1-B", "1E", "1EP", "1EU", "1F", "1T", "F1", "F1-B"}
+UPDATE_PRODUCT_TYPES = {"7", "7F", "7T", "F7"}
+REDOWNLOAD_PRODUCT_TYPES = {"3", "3F"}
