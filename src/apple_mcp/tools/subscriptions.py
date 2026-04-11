@@ -4,7 +4,7 @@ from typing import Any
 
 from ..cache import ReportCache
 from ..client import ApiClient
-from ..parsers import parse_sales_report
+from ..parsers import parse_sales_report, parse_subscription_event_report, parse_subscription_report
 
 _cache = ReportCache()
 
@@ -41,6 +41,14 @@ async def get_subscription_report(
             "filter[version]": version,
         },
     )
-    rows = parse_sales_report(raw)
+    # Use the appropriate parser based on report type
+    if report_type == "SUBSCRIPTION":
+        rows = parse_subscription_report(raw)
+    elif report_type == "SUBSCRIPTION_EVENT":
+        rows = parse_subscription_event_report(raw)
+    else:
+        # SUBSCRIBER and SUBSCRIPTION_OFFER_REDEMPTION: use generic TSV parser
+        rows = parse_sales_report(raw)
+
     _cache.set(cache_key, rows)
     return rows

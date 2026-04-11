@@ -84,6 +84,91 @@ FINANCE_COLUMN_MAP = {
 
 FINANCE_NUMERIC_FIELDS = {"partner_share", "extended_partner_share", "customer_price", "quantity"}
 
+SUBSCRIPTION_COLUMN_MAP = {
+    "App Name": "app_name",
+    "App Apple ID": "app_apple_id",
+    "Subscription Name": "subscription_name",
+    "Subscription Apple ID": "subscription_apple_id",
+    "Subscription Group ID": "subscription_group_id",
+    "Standard Subscription Duration": "standard_subscription_duration",
+    "Subscription Offer Name": "subscription_offer_name",
+    "Promotional Offer ID": "promotional_offer_id",
+    "Customer Price": "customer_price",
+    "Customer Currency": "customer_currency",
+    "Developer Proceeds": "developer_proceeds",
+    "Proceeds Currency": "proceeds_currency",
+    "Preserved Pricing": "preserved_pricing",
+    "Proceeds Reason": "proceeds_reason",
+    "Client": "client",
+    "Device": "device",
+    "State": "state",
+    "Country": "country",
+    "Active Standard Price Subscriptions": "active_standard_price",
+    "Active Free Trial Introductory Offer Subscriptions": "active_free_trial_intro",
+    "Active Pay Up Front Introductory Offer Subscriptions": "active_pay_up_front_intro",
+    "Active Pay as You Go Introductory Offer Subscriptions": "active_pay_as_you_go_intro",
+    "Free Trial Promotional Offer Subscriptions": "free_trial_promo",
+    "Pay Up Front Promotional Offer Subscriptions": "pay_up_front_promo",
+    "Pay As You Go Promotional Offer Subscriptions": "pay_as_you_go_promo",
+    "Free Trial Offer Code Subscriptions": "free_trial_offer_code",
+    "Pay Up Front Offer Code Subscriptions": "pay_up_front_offer_code",
+    "Pay As You Go Offer Code Subscriptions": "pay_as_you_go_offer_code",
+    "Marketing Opt-Ins": "marketing_opt_ins",
+    "Billing Retry": "billing_retry",
+    "Grace Period": "grace_period",
+    "Subscribers": "subscribers",
+    "Free Trial Win-Back Offers": "free_trial_win_back",
+    "Pay Up Front Win-Back Offers": "pay_up_front_win_back",
+    "Pay As You Go Win-Back Offers": "pay_as_you_go_win_back",
+}
+
+SUBSCRIPTION_NUMERIC_FIELDS = {
+    "customer_price", "developer_proceeds",
+    "active_standard_price", "active_free_trial_intro",
+    "active_pay_up_front_intro", "active_pay_as_you_go_intro",
+    "free_trial_promo", "pay_up_front_promo", "pay_as_you_go_promo",
+    "free_trial_offer_code", "pay_up_front_offer_code", "pay_as_you_go_offer_code",
+    "marketing_opt_ins", "billing_retry", "grace_period", "subscribers",
+    "free_trial_win_back", "pay_up_front_win_back", "pay_as_you_go_win_back",
+}
+
+SUBSCRIPTION_EVENT_COLUMN_MAP = {
+    "Event Date": "event_date",
+    "Event": "event",
+    "App Name": "app_name",
+    "App Apple ID": "app_apple_id",
+    "Subscription Name": "subscription_name",
+    "Subscription Apple ID": "subscription_apple_id",
+    "Subscription Group ID": "subscription_group_id",
+    "Standard Subscription Duration": "standard_subscription_duration",
+    "Subscription Offer Type": "subscription_offer_type",
+    "Subscription Offer Duration": "subscription_offer_duration",
+    "Marketing Opt-In": "marketing_opt_in",
+    "Marketing Opt-In Duration": "marketing_opt_in_duration",
+    "Preserved Pricing": "preserved_pricing",
+    "Proceeds Reason": "proceeds_reason",
+    "Subscription Offer Name": "subscription_offer_name",
+    "Promotional Offer ID": "promotional_offer_id",
+    "Consecutive Paid Periods": "consecutive_paid_periods",
+    "Original Start Date": "original_start_date",
+    "Device": "device",
+    "Client": "client",
+    "State": "state",
+    "Country": "country",
+    "Previous Subscription Name": "previous_subscription_name",
+    "Previous Subscription Apple ID": "previous_subscription_apple_id",
+    "Days Before Canceling": "days_before_canceling",
+    "Cancellation Reason": "cancellation_reason",
+    "Days Canceled": "days_canceled",
+    "Quantity": "quantity",
+    "Paid Service Days Recovered": "paid_service_days_recovered",
+}
+
+SUBSCRIPTION_EVENT_NUMERIC_FIELDS = {
+    "consecutive_paid_periods", "days_before_canceling", "days_canceled",
+    "quantity", "paid_service_days_recovered",
+}
+
 
 def _map_row(
     raw_row: dict[str, str],
@@ -108,6 +193,16 @@ def parse_sales_report(raw: str) -> list[dict[str, Any]]:
 def parse_finance_report(raw: str) -> list[dict[str, Any]]:
     """Parse finance report TSV into typed dicts."""
     return [_map_row(row, FINANCE_COLUMN_MAP, FINANCE_NUMERIC_FIELDS) for row in parse_tsv(raw)]
+
+
+def parse_subscription_report(raw: str) -> list[dict[str, Any]]:
+    """Parse subscription report TSV into typed dicts."""
+    return [_map_row(row, SUBSCRIPTION_COLUMN_MAP, SUBSCRIPTION_NUMERIC_FIELDS) for row in parse_tsv(raw)]
+
+
+def parse_subscription_event_report(raw: str) -> list[dict[str, Any]]:
+    """Parse subscription event report TSV into typed dicts."""
+    return [_map_row(row, SUBSCRIPTION_EVENT_COLUMN_MAP, SUBSCRIPTION_EVENT_NUMERIC_FIELDS) for row in parse_tsv(raw)]
 
 
 # Product Type Identifier sets
