@@ -21,6 +21,15 @@ async def get_subscription_report(
     if cached is not None:
         return cached
 
+    # Latest known report versions per type
+    _VERSIONS = {
+        "SUBSCRIPTION": "1_4",
+        "SUBSCRIPTION_EVENT": "1_3",
+        "SUBSCRIBER": "1_4",
+        "SUBSCRIPTION_OFFER_REDEMPTION": "1_1",
+    }
+    version = _VERSIONS.get(report_type, "1_0")
+
     raw = await client.fetch_gzipped_report(
         "/v1/salesReports",
         {
@@ -29,6 +38,7 @@ async def get_subscription_report(
             "filter[reportSubType]": report_sub_type,
             "filter[reportDate]": report_date,
             "filter[frequency]": date_type,
+            "filter[version]": version,
         },
     )
     rows = parse_sales_report(raw)
