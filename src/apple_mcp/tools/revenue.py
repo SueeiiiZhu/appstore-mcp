@@ -1,10 +1,14 @@
 """Revenue summary tool."""
 
+import logging
 from typing import Any
 
 from ..cache import ReportCache
 from ..client import ApiClient
+from ..exchange import convert_to_usd, get_rates_to_usd
 from ..parsers import parse_sales_report
+
+logger = logging.getLogger(__name__)
 
 _cache = ReportCache()
 
@@ -46,31 +50,48 @@ async def get_revenue_summary(
     rows = await _fetch_sales_rows(client, date)
     key_fn = _group_key_fn(group_by)
 
+    # Fetch exchange rates for the report date to normalize to USD
+    try:
+        rates = await get_rates_to_usd(date)
+    except Exception:
+        logger.warning("Failed to fetch exchange rates, falling back to raw amounts")
+        rates = {}
+
     groups: dict[str, dict[str, float]] = {}
-    total_proceeds = 0.0
+    total_proceeds_usd = 0.0
     total_units = 0
-    currency = "USD"
 
     for row in rows:
-        proceeds = row["developer_proceeds"] * row["units"]
-        total_proceeds += proceeds
+        currency = row.get("currency_of_proceeds") or "USD"
+        proceeds_local = row["developer_proceeds"] * row["units"]
+        proceeds_usd = convert_to_usd(proceeds_local, currency, rates)
+
+        total_proceeds_usd += proceeds_usd
         total_units += int(row["units"])
-        currency = row.get("currency_of_proceeds") or currency
 
         key = key_fn(row)
-        g = groups.setdefault(key, {"proceeds": 0.0, "units": 0})
-        g["proceeds"] += proceeds
+        g = groups.setdefault(key, {"proceeds_usd": 0.0, "units": 0})
+        g["proceeds_usd"] += proceeds_usd
         g["units"] += int(row["units"])
 
     breakdown = sorted(
-        [{"key": k, "proceeds": round(v["proceeds"], 2), "units": int(v["units"])} for k, v in groups.items()],
-        key=lambda x: x["proceeds"],
+        [{"key": k, "proceeds_usd": round(v["proceeds_usd"], 2), "units": int(v["units"])} for k, v in groups.items()],
+        key=lambda x: x["proceeds_usd"],
         reverse=True,
     )
 
-    return {
-        "total_proceeds": round(total_proceeds, 2),
-        "currency": currency,
+    result: dict[str, Any] = {
+        "total_proceeds_usd": round(total_proceeds_usd, 2),
+        "currency": "USD",
         "total_units": total_units,
         "breakdown": breakdown,
     }
+
+    if rates:
+        result["disclaimer"] = (
+            "USD amounts use third-party exchange rates (open.er-api.com), "
+            "NOT Apple's official exchange rate. Actual payment amounts may differ. "
+            "Please refer to Apple's official payment details for accurate figures."
+        )
+
+    return result
