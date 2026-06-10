@@ -44,7 +44,19 @@ def test_get_sales_report_reads_local_file(monkeypatch, tmp_path):
 
 def test_get_sales_report_reads_local_csv_file(monkeypatch, tmp_path):
     sales_tool._cache.clear()
-    raw = (FIXTURES / "sample_sales.tsv").read_text().replace("\t", ",")
+    raw = (
+        "Provider,ProviderCountry,SKU,Developer,Title,ContentType,Version,"
+        "ProductTypeIdentifier,Units,DeveloperProceeds,BeginDate,EndDate,"
+        "CustomerCurrency,Country,CountryCode,CurrencyOfProceeds,"
+        "AppleIdentifier,CustomerPrice,PromoCode,ParentIdentifier,"
+        "Subscription,Period,Category,CMB,Device,SupportedPlatforms,"
+        "ProceedsReason,PreservedPricing,Client,OrderType,AppName,"
+        "ExchangeRate,WithholdingTaxRate,WithholdingTax\n"
+        "APPLE,US,com.delta.cube.solver,Delta Software,CubeSolver,APP,3.3.3,"
+        "1,2,1.38,2024-04-21,2024-04-21,USD,United States,US,USD,123456789,"
+        "1.99,PROMO,parent-id,Monthly,1 Month,Utilities,CMB123,iPhone,iOS,"
+        "Standard,false,App Store,Purchase,CubeSolver,1,0,0\n"
+    )
     csv_path = tmp_path / "sales" / "appstore_transformed_sales_summary_20240421.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_text(raw)
@@ -53,8 +65,12 @@ def test_get_sales_report_reads_local_csv_file(monkeypatch, tmp_path):
     client = FakeClient(raw="should not be used")
     rows = asyncio.run(sales_tool.get_sales_report(client, "2024-04-21", source="local"))
 
-    assert len(rows) == 4
-    assert rows[0]["sku"] == "com.example.app"
+    assert len(rows) == 1
+    assert rows[0]["sku"] == "com.delta.cube.solver"
+    assert rows[0]["provider_country"] == "US"
+    assert rows[0]["product_type_identifier"] == "1"
+    assert rows[0]["developer_proceeds"] == 1.38
+    assert rows[0]["supported_platforms"] == "iOS"
     assert client.calls == []
 
 

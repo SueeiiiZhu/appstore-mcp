@@ -71,3 +71,33 @@ def test_parse_sales_report_csv_with_apple_headers():
     assert rows[0]["units"] == 10.0
     assert rows[0]["developer_proceeds"] == 6.99
     assert rows[2]["country_code"] == "JP"
+
+
+def test_parse_sales_report_csv_with_transformed_headers():
+    raw = (
+        "Provider,ProviderCountry,SKU,Developer,Title,ContentType,Version,"
+        "ProductTypeIdentifier,Units,DeveloperProceeds,BeginDate,EndDate,"
+        "CustomerCurrency,Country,CountryCode,CurrencyOfProceeds,"
+        "AppleIdentifier,CustomerPrice,PromoCode,ParentIdentifier,"
+        "Subscription,Period,Category,CMB,Device,SupportedPlatforms,"
+        "ProceedsReason,PreservedPricing,Client,OrderType,AppName,"
+        "ExchangeRate,WithholdingTaxRate,WithholdingTax\n"
+        "APPLE,US,com.delta.cube.solver,Delta Software,CubeSolver,APP,3.3.3,"
+        "1,2,1.38,2024-04-21,2024-04-21,USD,United States,US,USD,123456789,"
+        "1.99,PROMO,parent-id,Monthly,1 Month,Utilities,CMB123,iPhone,iOS,"
+        "Standard,false,App Store,Purchase,CubeSolver,1,0,0\n"
+    )
+
+    rows = parse_sales_report(raw)
+
+    assert len(rows) == 1
+    assert rows[0]["provider_country"] == "US"
+    assert rows[0]["product_type_identifier"] == "1"
+    assert rows[0]["developer_proceeds"] == 1.38
+    assert rows[0]["begin_date"] == "2024-04-21"
+    assert rows[0]["country_code"] == "US"
+    assert rows[0]["currency_of_proceeds"] == "USD"
+    assert rows[0]["apple_identifier"] == "123456789"
+    assert rows[0]["customer_price"] == 1.99
+    assert rows[0]["supported_platforms"] == "iOS"
+    assert rows[0]["order_type"] == "Purchase"
