@@ -2,6 +2,8 @@
 
 将 App Store Connect 报告 API 转为 MCP 协议，支持 stdio 和 HTTP 两种传输方式。自动解析 gzipped TSV 报告为结构化 JSON，并提供收入聚合、安装统计等高级工具。
 
+另外也支持**本地历史报表目录**：因为 App Store Connect 报表 API 只能获取约 1 年内的数据，你可以把更早的报表归档到本地目录，再通过同一组 MCP 工具读取。
+
 ## 获取 App Store Connect API 凭证
 
 ### 1. 创建 API 密钥
@@ -41,7 +43,12 @@ APP_STORE_CONNECT_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 APP_STORE_CONNECT_KEY_ID=ABC1234DEF
 APP_STORE_CONNECT_PRIVATE_KEY_PATH=/path/to/AuthKey_ABC1234DEF.p8
 APP_STORE_CONNECT_VENDOR_NUMBER=12345678
+
+# 可选：本地历史报表根目录（示例占位符，需自行改成真实路径）
+APP_STORE_REPORT_LOCAL_DIR=/path/to/apple-reports
 ```
+
+注意：这里的 `/path/to/apple-reports` 只是示例占位符，不会自动创建，也不会自动生效；如果你要启用本地历史报表读取，必须在 `.env` 或运行环境中自行配置成真实路径。
 
 ## 安装
 
@@ -69,7 +76,8 @@ Claude Desktop 配置 (`claude_desktop_config.json`)：
         "APP_STORE_CONNECT_ISSUER_ID": "xxx",
         "APP_STORE_CONNECT_KEY_ID": "xxx",
         "APP_STORE_CONNECT_PRIVATE_KEY_PATH": "/path/to/AuthKey.p8",
-        "APP_STORE_CONNECT_VENDOR_NUMBER": "12345678"
+        "APP_STORE_CONNECT_VENDOR_NUMBER": "12345678",
+        "APP_STORE_REPORT_LOCAL_DIR": "/path/to/apple-reports"
       }
     }
   }
@@ -100,20 +108,93 @@ uv run python -m apple_mcp --http --port 3000
 - `--port 3000` — 监听端口（默认 3000）
 - `--host 127.0.0.1` — 绑定地址（HTTP 模式默认 0.0.0.0）
 
+## 本地历史报表
+
+### 适用场景
+
+Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史报表放在本地目录中，然后在工具调用时传入 `source="local"` 或 `source="auto"`。
+
+- `source="api"`：强制走 Apple API
+- `source="local"`：强制走本地目录，不命中就报错
+- `source="auto"`：优先查本地目录，找不到再回退到 Apple API
+
+如果你只想读取本地历史报表，可以只配置 `APP_STORE_REPORT_LOCAL_DIR`，并在调用时报 `source="local"`。
+
+再次说明：`APP_STORE_REPORT_LOCAL_DIR=/path/to/apple-reports` 只是文档示例，不是默认值，需要你自己替换成真实目录。
+
+### 推荐目录结构
+
+程序会递归扫描本地目录，并根据**报表类型 / 子类型 / 频率 / 日期 / 区域 / vendor number**做匹配。当前实现会优先适配你这类实际归档顶层目录：`financial`、`financial_extended`、`sales`、`subscriptions_event`。
+
+推荐按下面方式组织：
+
+```text
+/path/to/apple-reports/
+  financial/
+    2024-03_ZZ.tsv.gz
+  financial_extended/
+    2024-03_ZZ_detailed.tsv.gz
+  sales/
+    summary/daily/2024-04-08.tsv.gz
+    subscriber/daily/2024-04-08.tsv.gz
+    S_D_12345678_20240408.gz
+  subscriptions_event/
+    daily/2024-04-08.tsv.gz
+    2024-04-08_subscription_event.tsv.gz
+```
+
+其中：
+- `financial` / `financial_extended` 会优先用于 `get_finance_report`
+- `sales` 会优先用于 sales / revenue / installs，以及部分 subscription 类报表
+- `subscriptions_event` 会优先用于 `SUBSCRIPTION_EVENT` 报表
+
+支持的本地文件后缀：
+- `.gz`
+- `.gzip`
+- `.tsv`
+- `.txt`
+
+如果同一个请求匹配到多个本地文件，工具会直接报错，避免静默读错数据。
+
 ## MCP 工具
 
 | 工具 | 用途 |
 |------|------|
-| `get_revenue_summary` | 每日收入聚合，按 app/国家/设备分组 |
-| `get_install_stats` | 安装统计，区分新装/更新/重下载 |
-| `get_sales_report` | 原始销售报告（SUMMARY/SUBSCRIPTION 等） |
-| `get_subscription_report` | 订阅状态与事件报告 |
-| `get_finance_report` | 按地区的财务结算报告 |
+| `get_revenue_summary` | 每日收入聚合，按 app/国家/设备分组，支持 `source` |
+| `get_install_stats` | 安装统计，区分新装/更新/重下载，支持 `source` |
+| `get_sales_report` | 原始销售报告（SUMMARY/SUBSCRIPTION 等），支持 `source` |
+| `get_subscription_report` | 订阅状态与事件报告，支持 `source` |
+| `get_finance_report` | 按地区的财务结算报告，支持 `source` |
 | `get_customer_reviews` | 用户评论，支持评分过滤和排序 |
+
+### 示例
+
+```json
+{
+  "tool": "get_revenue_summary",
+  "arguments": {
+    "date": "2024-04-08",
+    "group_by": "app",
+    "source": "local"
+  }
+}
+```
+
+```json
+{
+  "tool": "get_finance_report",
+  "arguments": {
+    "report_date": "2024-03",
+    "region_code": "ZZ",
+    "source": "auto"
+  }
+}
+```
 
 ## 注意事项
 
 - 每日报告通常在次日 **太平洋时间上午 8 点**后可用
 - API 速率限制：3600 次/小时
 - 销售和财务报告不可变，已自动缓存避免重复请求
+- 本地报表缓存会绑定文件路径、修改时间和大小，文件更新后会自动失效
 - 私钥 `.p8` 文件已在 `.gitignore` 中排除，不会被提交

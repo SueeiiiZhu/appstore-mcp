@@ -2,37 +2,10 @@
 
 from typing import Any
 
-from ..cache import ReportCache
 from ..client import ApiClient
-from ..parsers import (
-    INSTALL_PRODUCT_TYPES,
-    REDOWNLOAD_PRODUCT_TYPES,
-    UPDATE_PRODUCT_TYPES,
-    parse_sales_report,
-)
-
-_cache = ReportCache()
-
-
-async def _fetch_sales_rows(client: ApiClient, date: str) -> list[dict[str, Any]]:
-    cache_key = f"sales:SUMMARY:DAILY:{date}:{client.vendor_number}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    raw = await client.fetch_gzipped_report(
-        "/v1/salesReports",
-        {
-            "filter[vendorNumber]": client.vendor_number,
-            "filter[reportType]": "SALES",
-            "filter[reportSubType]": "SUMMARY",
-            "filter[reportDate]": date,
-            "filter[frequency]": "DAILY",
-        },
-    )
-    rows = parse_sales_report(raw)
-    _cache.set(cache_key, rows)
-    return rows
+from ..parsers import INSTALL_PRODUCT_TYPES, REDOWNLOAD_PRODUCT_TYPES, UPDATE_PRODUCT_TYPES
+from ..report_source import ReportSource
+from .sales import get_sales_report
 
 
 def _group_key_fn(group_by: str):
@@ -46,9 +19,12 @@ def _group_key_fn(group_by: str):
 
 
 async def get_install_stats(
-    client: ApiClient, date: str, group_by: str = "app"
+    client: ApiClient,
+    date: str,
+    group_by: str = "app",
+    source: ReportSource = "auto",
 ) -> dict[str, Any]:
-    rows = await _fetch_sales_rows(client, date)
+    rows = await get_sales_report(client, date, "SUMMARY", "DAILY", source)
     key_fn = _group_key_fn(group_by)
 
     groups: dict[str, dict[str, int]] = {}

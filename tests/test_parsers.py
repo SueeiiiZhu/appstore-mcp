@@ -1,10 +1,22 @@
 """Tests for TSV parsers."""
 
+import gzip
 from pathlib import Path
 
-from apple_mcp.parsers import parse_tsv, parse_sales_report
+from apple_mcp.parsers import decode_report_bytes, parse_sales_report, parse_tsv
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_decode_report_bytes_plain_text():
+    raw = (FIXTURES / "sample_sales.tsv").read_text()
+    assert decode_report_bytes(raw.encode("utf-8")) == raw
+
+
+def test_decode_report_bytes_gzip():
+    raw = (FIXTURES / "sample_sales.tsv").read_text()
+    compressed = gzip.compress(raw.encode("utf-8"))
+    assert decode_report_bytes(compressed, "sample_sales.tsv.gz") == raw
 
 
 def test_parse_tsv_basic():

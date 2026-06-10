@@ -3,35 +3,12 @@
 import logging
 from typing import Any
 
-from ..cache import ReportCache
 from ..client import ApiClient
 from ..exchange import convert_to_usd, get_rates_to_usd
-from ..parsers import parse_sales_report
+from ..report_source import ReportSource
+from .sales import get_sales_report
 
 logger = logging.getLogger(__name__)
-
-_cache = ReportCache()
-
-
-async def _fetch_sales_rows(client: ApiClient, date: str) -> list[dict[str, Any]]:
-    cache_key = f"sales:SUMMARY:DAILY:{date}:{client.vendor_number}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    raw = await client.fetch_gzipped_report(
-        "/v1/salesReports",
-        {
-            "filter[vendorNumber]": client.vendor_number,
-            "filter[reportType]": "SALES",
-            "filter[reportSubType]": "SUMMARY",
-            "filter[reportDate]": date,
-            "filter[frequency]": "DAILY",
-        },
-    )
-    rows = parse_sales_report(raw)
-    _cache.set(cache_key, rows)
-    return rows
 
 
 def _group_key_fn(group_by: str):
@@ -45,9 +22,12 @@ def _group_key_fn(group_by: str):
 
 
 async def get_revenue_summary(
-    client: ApiClient, date: str, group_by: str = "app"
+    client: ApiClient,
+    date: str,
+    group_by: str = "app",
+    source: ReportSource = "auto",
 ) -> dict[str, Any]:
-    rows = await _fetch_sales_rows(client, date)
+    rows = await get_sales_report(client, date, "SUMMARY", "DAILY", source)
     key_fn = _group_key_fn(group_by)
 
     # Fetch exchange rates for the report date to normalize to USD

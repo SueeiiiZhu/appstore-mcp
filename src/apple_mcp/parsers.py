@@ -4,6 +4,18 @@ import gzip
 from typing import Any
 
 
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def decode_report_bytes(data: bytes, file_name: str | None = None) -> str:
+    """Decode report bytes, automatically handling gzipped files."""
+    lower_name = (file_name or "").lower()
+    is_gzip = lower_name.endswith((".gz", ".gzip")) or data.startswith(_GZIP_MAGIC)
+    if is_gzip:
+        data = gzip.decompress(data)
+    return data.decode("utf-8")
+
+
 def parse_tsv(raw: str) -> list[dict[str, str]]:
     """Parse a TSV string into a list of dicts keyed by header names."""
     lines = [line for line in raw.split("\n") if line.strip()]
@@ -21,8 +33,7 @@ def parse_tsv(raw: str) -> list[dict[str, str]]:
 
 def parse_gzipped_tsv(data: bytes) -> list[dict[str, str]]:
     """Decompress gzipped data and parse as TSV."""
-    text = gzip.decompress(data).decode("utf-8")
-    return parse_tsv(text)
+    return parse_tsv(decode_report_bytes(data))
 
 
 # Column mapping: Apple TSV header → our field name
@@ -123,13 +134,25 @@ SUBSCRIPTION_COLUMN_MAP = {
 }
 
 SUBSCRIPTION_NUMERIC_FIELDS = {
-    "customer_price", "developer_proceeds",
-    "active_standard_price", "active_free_trial_intro",
-    "active_pay_up_front_intro", "active_pay_as_you_go_intro",
-    "free_trial_promo", "pay_up_front_promo", "pay_as_you_go_promo",
-    "free_trial_offer_code", "pay_up_front_offer_code", "pay_as_you_go_offer_code",
-    "marketing_opt_ins", "billing_retry", "grace_period", "subscribers",
-    "free_trial_win_back", "pay_up_front_win_back", "pay_as_you_go_win_back",
+    "customer_price",
+    "developer_proceeds",
+    "active_standard_price",
+    "active_free_trial_intro",
+    "active_pay_up_front_intro",
+    "active_pay_as_you_go_intro",
+    "free_trial_promo",
+    "pay_up_front_promo",
+    "pay_as_you_go_promo",
+    "free_trial_offer_code",
+    "pay_up_front_offer_code",
+    "pay_as_you_go_offer_code",
+    "marketing_opt_ins",
+    "billing_retry",
+    "grace_period",
+    "subscribers",
+    "free_trial_win_back",
+    "pay_up_front_win_back",
+    "pay_as_you_go_win_back",
 }
 
 SUBSCRIPTION_EVENT_COLUMN_MAP = {
@@ -165,8 +188,11 @@ SUBSCRIPTION_EVENT_COLUMN_MAP = {
 }
 
 SUBSCRIPTION_EVENT_NUMERIC_FIELDS = {
-    "consecutive_paid_periods", "days_before_canceling", "days_canceled",
-    "quantity", "paid_service_days_recovered",
+    "consecutive_paid_periods",
+    "days_before_canceling",
+    "days_canceled",
+    "quantity",
+    "paid_service_days_recovered",
 }
 
 
