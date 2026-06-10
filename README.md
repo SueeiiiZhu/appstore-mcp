@@ -138,6 +138,7 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
     summary/daily/2024-04-08.tsv.gz
     subscriber/daily/2024-04-08.tsv.gz
     S_D_12345678_20240408.gz
+    appstore_transformed_sales_summary_20240421.csv
   subscriptions_event/
     daily/2024-04-08.tsv.gz
     2024-04-08_subscription_event.tsv.gz
@@ -153,8 +154,11 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
 - `.gzip`
 - `.tsv`
 - `.txt`
+- `.csv`
 
 如果同一个请求匹配到多个本地文件，工具会直接报错，避免静默读错数据。
+
+日期过滤同时兼容 `2024-04-21`、`2024_04_21`、`20240421` 这几种命名形式，便于匹配类似 `appstore_transformed_sales_summary_20240421.csv` 的归档文件。
 
 如果你想先确认本地目录里有哪些历史文件可被发现，可以调用 `list_local_reports`。这个工具只读取 `APP_STORE_REPORT_LOCAL_DIR`，不访问 Apple API，也不需要 API 凭证；但前提是你必须先把该环境变量配置成真实目录。
 

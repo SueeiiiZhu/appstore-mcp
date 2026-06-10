@@ -13,7 +13,7 @@ from .parsers import decode_report_bytes
 ReportSource = Literal["auto", "api", "local"]
 
 LOCAL_REPORT_DIR_ENV = "APP_STORE_REPORT_LOCAL_DIR"
-_ALLOWED_SUFFIXES = (".gz", ".gzip", ".tsv", ".txt")
+_ALLOWED_SUFFIXES = (".gz", ".gzip", ".tsv", ".txt", ".csv")
 
 _SPECIAL_ALIASES = {
     "SALES": {"sales", "sale", "s"},
@@ -399,7 +399,7 @@ def _matches_local_report_filters(
         return False
     if date_type and not _matches_any(lowered, tokens, _aliases_for(date_type)):
         return False
-    if report_date_prefix and report_date_prefix not in lowered:
+    if report_date_prefix and not any(alias in lowered for alias in _date_aliases(report_date_prefix)):
         return False
     if region_code and not _matches_any(lowered, tokens, {region_code}):
         return False
