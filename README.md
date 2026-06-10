@@ -162,7 +162,21 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
 
 对于本地 transformed CSV，表头同时兼容 Apple 原始格式（例如 `Provider Country`）和去空格/去分隔符格式（例如 `ProviderCountry`、`ProductTypeIdentifier`）。
 
+原始报表工具的**输出字段**也已统一成 transformed/local 表头风格：
+- `get_sales_report` 返回 `ProviderCountry`、`ProductTypeIdentifier`、`DeveloperProceeds`、`CountryCode`、`SupportedPlatforms` 这类字段
+- `get_subscription_report` 返回 `AppName`、`SubscriptionAppleID`、`DeveloperProceeds`、`CustomerCurrency` 这类字段
+- 这个输出约定对 `source="api"` 和 `source="local"` 都一致
+- 仅原始报表工具对外使用这套表头；聚合工具（例如 `get_revenue_summary`、`get_install_stats`）内部仍使用规范化后的字段做计算
+
 如果你想先确认本地目录里有哪些历史文件可被发现，可以调用 `list_local_reports`。这个工具只读取 `APP_STORE_REPORT_LOCAL_DIR`，不访问 Apple API，也不需要 API 凭证；但前提是你必须先把该环境变量配置成真实目录。
+
+### 关键实现文件
+
+- `src/apple_mcp/report_source.py`：本地目录扫描、日期匹配、local/api/auto 路由
+- `src/apple_mcp/parsers.py`：Apple 原始表头 / 本地 transformed 表头兼容解析，以及原始报表输出表头格式化
+- `src/apple_mcp/tools/sales.py`：sales 原始报表读取；对外返回 transformed/local 风格表头
+- `src/apple_mcp/tools/subscriptions.py`：subscription 原始报表读取；对外返回 transformed/local 风格表头
+- `src/apple_mcp/server.py`：MCP 工具注册与参数定义
 
 ## MCP 工具
 
@@ -170,8 +184,8 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
 |------|------|
 | `get_revenue_summary` | 每日收入聚合，按 app/国家/设备分组，支持 `source` |
 | `get_install_stats` | 安装统计，区分新装/更新/重下载，支持 `source` |
-| `get_sales_report` | 原始销售报告（SUMMARY/SUBSCRIPTION 等），支持 `source` |
-| `get_subscription_report` | 订阅状态与事件报告，支持 `source` |
+| `get_sales_report` | 原始销售报告（SUMMARY/SUBSCRIPTION 等），支持 `source`，返回 transformed/local 风格表头 |
+| `get_subscription_report` | 订阅状态与事件报告，支持 `source`，返回 transformed/local 风格表头 |
 | `get_finance_report` | 按地区的财务结算报告，支持 `source` |
 | `list_local_reports` | 列出 `APP_STORE_REPORT_LOCAL_DIR` 下可用的本地历史报表文件 |
 | `get_customer_reviews` | 用户评论，支持评分过滤和排序 |
@@ -199,6 +213,35 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
   }
 }
 ```
+
+```json
+{
+  "tool": "get_sales_report",
+  "arguments": {
+    "report_date": "2024-04-21",
+    "report_sub_type": "SUMMARY",
+    "date_type": "DAILY",
+    "source": "local"
+  }
+}
+```
+
+`get_sales_report` 返回的字段名会统一成 transformed/local 风格，例如 `ProviderCountry`、`ProductTypeIdentifier`、`DeveloperProceeds`、`CountryCode`。
+
+```json
+{
+  "tool": "get_subscription_report",
+  "arguments": {
+    "report_date": "2024-04-21",
+    "report_type": "SUBSCRIPTION",
+    "report_sub_type": "SUMMARY",
+    "date_type": "DAILY",
+    "source": "api"
+  }
+}
+```
+
+`get_subscription_report` 返回的字段名也会统一成 transformed/local 风格，例如 `AppName`、`SubscriptionAppleID`、`CustomerPrice`、`DeveloperProceeds`。
 
 ```json
 {

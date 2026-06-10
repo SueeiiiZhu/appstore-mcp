@@ -8,6 +8,7 @@ import pytest
 
 from apple_mcp.report_source import ReportSourceError, list_local_reports, resolve_finance_report_source, resolve_sales_report_source
 from apple_mcp.tools import sales as sales_tool
+from apple_mcp.tools import subscriptions as subscriptions_tool
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -38,7 +39,8 @@ def test_get_sales_report_reads_local_file(monkeypatch, tmp_path):
     rows = asyncio.run(sales_tool.get_sales_report(client, "2026-04-08", source="local"))
 
     assert len(rows) == 4
-    assert rows[0]["sku"] == "com.example.app"
+    assert rows[0]["SKU"] == "com.example.app"
+    assert rows[0]["ProviderCountry"] == "US"
     assert client.calls == []
 
 
@@ -66,11 +68,12 @@ def test_get_sales_report_reads_local_csv_file(monkeypatch, tmp_path):
     rows = asyncio.run(sales_tool.get_sales_report(client, "2024-04-21", source="local"))
 
     assert len(rows) == 1
-    assert rows[0]["sku"] == "com.delta.cube.solver"
-    assert rows[0]["provider_country"] == "US"
-    assert rows[0]["product_type_identifier"] == "1"
-    assert rows[0]["developer_proceeds"] == 1.38
-    assert rows[0]["supported_platforms"] == "iOS"
+    assert rows[0]["SKU"] == "com.delta.cube.solver"
+    assert rows[0]["ProviderCountry"] == "US"
+    assert rows[0]["ProductTypeIdentifier"] == "1"
+    assert rows[0]["DeveloperProceeds"] == 1.38
+    assert rows[0]["SupportedPlatforms"] == "iOS"
+    assert rows[0]["AppName"] == "CubeSolver"
     assert client.calls == []
 
 
@@ -83,6 +86,8 @@ def test_get_sales_report_auto_falls_back_to_api(monkeypatch, tmp_path):
     rows = asyncio.run(sales_tool.get_sales_report(client, "2026-04-08", source="auto"))
 
     assert len(rows) == 4
+    assert rows[0]["SKU"] == "com.example.app"
+    assert rows[0]["ProviderCountry"] == "US"
     assert len(client.calls) == 1
     assert client.calls[0][0] == "/v1/salesReports"
 
@@ -103,6 +108,62 @@ def test_get_sales_report_uses_separate_cache_keys_for_local_and_api(monkeypatch
     assert len(local_rows) == 4
     assert api_rows == []
     assert len(api_client.calls) == 1
+
+
+def test_get_subscription_report_reads_local_csv_file(monkeypatch, tmp_path):
+    subscriptions_tool._cache.clear()
+    raw = (
+        "AppName,SubscriptionAppleID,CustomerPrice,CustomerCurrency,DeveloperProceeds\n"
+        "CubeSolver Pro,123456789,9.99,USD,6.99\n"
+    )
+    csv_path = tmp_path / "sales" / "appstore_transformed_subscription_summary_20240421.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(raw)
+    monkeypatch.setenv("APP_STORE_REPORT_LOCAL_DIR", str(tmp_path))
+
+    client = FakeClient(raw="should not be used")
+    rows = asyncio.run(
+        subscriptions_tool.get_subscription_report(
+            client,
+            "2024-04-21",
+            report_type="SUBSCRIPTION",
+            source="local",
+        )
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["AppName"] == "CubeSolver Pro"
+    assert rows[0]["SubscriptionAppleID"] == "123456789"
+    assert rows[0]["CustomerPrice"] == 9.99
+    assert rows[0]["DeveloperProceeds"] == 6.99
+    assert client.calls == []
+
+
+def test_get_subscription_report_formats_api_output_with_transformed_headers():
+    subscriptions_tool._cache.clear()
+    raw = (
+        "App Name\tSubscription Apple ID\tCustomer Price\tCustomer Currency\tDeveloper Proceeds\n"
+        "CubeSolver Pro\t123456789\t9.99\tUSD\t6.99\n"
+    )
+
+    client = FakeClient(raw=raw)
+    rows = asyncio.run(
+        subscriptions_tool.get_subscription_report(
+            client,
+            "2026-04-08",
+            report_type="SUBSCRIPTION",
+            source="api",
+        )
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["AppName"] == "CubeSolver Pro"
+    assert rows[0]["SubscriptionAppleID"] == "123456789"
+    assert rows[0]["CustomerPrice"] == 9.99
+    assert rows[0]["CustomerCurrency"] == "USD"
+    assert rows[0]["DeveloperProceeds"] == 6.99
+    assert len(client.calls) == 1
+    assert client.calls[0][0] == "/v1/salesReports"
 
 
 def test_get_sales_report_local_requires_local_dir(monkeypatch):

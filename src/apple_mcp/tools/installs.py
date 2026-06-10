@@ -5,7 +5,7 @@ from typing import Any
 from ..client import ApiClient
 from ..parsers import INSTALL_PRODUCT_TYPES, REDOWNLOAD_PRODUCT_TYPES, UPDATE_PRODUCT_TYPES
 from ..report_source import ReportSource
-from .sales import get_sales_report
+from .sales import _get_sales_rows_internal
 
 
 def _group_key_fn(group_by: str):
@@ -24,7 +24,7 @@ async def get_install_stats(
     group_by: str = "app",
     source: ReportSource = "auto",
 ) -> dict[str, Any]:
-    rows = await get_sales_report(client, date, "SUMMARY", "DAILY", source)
+    rows = await _get_sales_rows_internal(client, date, "SUMMARY", "DAILY", source)
     key_fn = _group_key_fn(group_by)
 
     groups: dict[str, dict[str, int]] = {}

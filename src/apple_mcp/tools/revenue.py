@@ -6,7 +6,7 @@ from typing import Any
 from ..client import ApiClient
 from ..exchange import convert_to_usd, get_rates_to_usd
 from ..report_source import ReportSource
-from .sales import get_sales_report
+from .sales import _get_sales_rows_internal
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ async def get_revenue_summary(
     group_by: str = "app",
     source: ReportSource = "auto",
 ) -> dict[str, Any]:
-    rows = await get_sales_report(client, date, "SUMMARY", "DAILY", source)
+    rows = await _get_sales_rows_internal(client, date, "SUMMARY", "DAILY", source)
     key_fn = _group_key_fn(group_by)
 
     # Fetch exchange rates for the report date to normalize to USD
