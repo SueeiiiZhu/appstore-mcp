@@ -1,6 +1,8 @@
 """TSV report parsers for App Store Connect reports."""
 
+import csv
 import gzip
+from io import StringIO
 from typing import Any
 
 
@@ -17,18 +19,29 @@ def decode_report_bytes(data: bytes, file_name: str | None = None) -> str:
 
 
 def parse_tsv(raw: str) -> list[dict[str, str]]:
-    """Parse a TSV string into a list of dicts keyed by header names."""
-    lines = [line for line in raw.split("\n") if line.strip()]
+    """Parse tab- or comma-delimited report text into rows keyed by header names."""
+    lines = [line for line in raw.splitlines() if line.strip()]
     if len(lines) < 2:
         return []
 
-    headers = lines[0].split("\t")
-    rows = []
-    for line in lines[1:]:
-        values = line.split("\t")
-        row = {h.strip(): (values[i].strip() if i < len(values) else "") for i, h in enumerate(headers)}
-        rows.append(row)
+    delimiter = _detect_delimiter(lines[0])
+    reader = csv.DictReader(StringIO("\n".join(lines)), delimiter=delimiter)
+    rows: list[dict[str, str]] = []
+    for row in reader:
+        normalized_row = {
+            (key or "").strip(): (value.strip() if value is not None else "")
+            for key, value in row.items()
+        }
+        rows.append(normalized_row)
     return rows
+
+
+def _detect_delimiter(header_line: str) -> str:
+    if "\t" in header_line:
+        return "\t"
+    if "," in header_line:
+        return ","
+    return "\t"
 
 
 def parse_gzipped_tsv(data: bytes) -> list[dict[str, str]]:

@@ -42,6 +42,22 @@ def test_get_sales_report_reads_local_file(monkeypatch, tmp_path):
     assert client.calls == []
 
 
+def test_get_sales_report_reads_local_csv_file(monkeypatch, tmp_path):
+    sales_tool._cache.clear()
+    raw = (FIXTURES / "sample_sales.tsv").read_text().replace("\t", ",")
+    csv_path = tmp_path / "sales" / "appstore_transformed_sales_summary_20240421.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(raw)
+    monkeypatch.setenv("APP_STORE_REPORT_LOCAL_DIR", str(tmp_path))
+
+    client = FakeClient(raw="should not be used")
+    rows = asyncio.run(sales_tool.get_sales_report(client, "2024-04-21", source="local"))
+
+    assert len(rows) == 4
+    assert rows[0]["sku"] == "com.example.app"
+    assert client.calls == []
+
+
 def test_get_sales_report_auto_falls_back_to_api(monkeypatch, tmp_path):
     sales_tool._cache.clear()
     raw = (FIXTURES / "sample_sales.tsv").read_text()
@@ -122,6 +138,41 @@ def test_list_local_reports_respects_prefix_and_limit(monkeypatch, tmp_path):
     assert result["returned_count"] == 1
     assert result["truncated"] is True
     assert result["files"][0]["name"].startswith("sales/summary/daily/")
+
+
+def test_list_local_reports_matches_compact_csv_dates(monkeypatch, tmp_path):
+    csv_path = tmp_path / "sales" / "appstore_transformed_sales_summary_20240421.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text("Provider,Units\nAPPLE,10\n")
+    monkeypatch.setenv("APP_STORE_REPORT_LOCAL_DIR", str(tmp_path))
+
+    result = list_local_reports(
+        report_type="SALES",
+        report_sub_type="SUMMARY",
+        report_date_prefix="2024-04-21",
+    )
+
+    assert result["total_count"] == 1
+    assert result["files"][0]["name"] == "sales/appstore_transformed_sales_summary_20240421.csv"
+
+
+def test_resolve_sales_report_source_finds_compact_csv_sales_file(monkeypatch, tmp_path):
+    csv_path = tmp_path / "sales" / "appstore_transformed_sales_summary_20240421.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text("Provider,Units\nAPPLE,10\n")
+    monkeypatch.setenv("APP_STORE_REPORT_LOCAL_DIR", str(tmp_path))
+
+    location = resolve_sales_report_source(
+        FakeClient(),
+        "2024-04-21",
+        report_type="SALES",
+        report_sub_type="SUMMARY",
+        date_type="DAILY",
+        source="local",
+    )
+
+    assert location.source == "local"
+    assert location.local_path == csv_path.resolve()
 
 
 def test_resolve_finance_report_source_finds_financial_directory_file(monkeypatch, tmp_path):
