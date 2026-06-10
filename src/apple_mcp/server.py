@@ -117,7 +117,7 @@ async def get_sales_report_tool(
         "Data source: auto prefers local archive, api forces Apple API, local requires APP_STORE_REPORT_LOCAL_DIR",
     ] = "auto",
 ) -> str:
-    """Get raw sales report data parsed as structured JSON."""
+    """Get raw sales report data parsed as structured JSON with transformed/local-style headers."""
     try:
         result = await get_sales_report(
             _get_client(require_auth=source != "local"),
@@ -153,7 +153,7 @@ async def get_subscription_report_tool(
         "Data source: auto prefers local archive, api forces Apple API, local requires APP_STORE_REPORT_LOCAL_DIR",
     ] = "auto",
 ) -> str:
-    """Get subscription report data (active subscribers, trials, events)."""
+    """Get subscription report data (active subscribers, trials, events) with transformed/local-style headers."""
     try:
         result = await get_subscription_report(
             _get_client(require_auth=source != "local"),

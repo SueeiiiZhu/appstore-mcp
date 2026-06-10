@@ -57,6 +57,14 @@ def _build_normalized_column_map(column_map: dict[str, str]) -> dict[str, str]:
     return {_normalize_header(header): field_name for header, field_name in column_map.items()}
 
 
+def _compact_header(header: str) -> str:
+    return "".join(ch for ch in header.lstrip("﻿").strip() if ch.isalnum())
+
+
+def _build_public_column_map(column_map: dict[str, str]) -> dict[str, str]:
+    return {field_name: _compact_header(header) for header, field_name in column_map.items()}
+
+
 # Column mapping: Apple TSV header → our field name
 SALES_COLUMN_MAP = {
     "Provider": "provider",
@@ -64,6 +72,7 @@ SALES_COLUMN_MAP = {
     "SKU": "sku",
     "Developer": "developer",
     "Title": "title",
+    "Content Type": "content_type",
     "Version": "version",
     "Product Type Identifier": "product_type_identifier",
     "Units": "units",
@@ -71,6 +80,7 @@ SALES_COLUMN_MAP = {
     "Begin Date": "begin_date",
     "End Date": "end_date",
     "Customer Currency": "customer_currency",
+    "Country": "country",
     "Country Code": "country_code",
     "Currency of Proceeds": "currency_of_proceeds",
     "Apple Identifier": "apple_identifier",
@@ -87,10 +97,22 @@ SALES_COLUMN_MAP = {
     "Preserved Pricing": "preserved_pricing",
     "Client": "client",
     "Order Type": "order_type",
+    "App Name": "app_name",
+    "Exchange Rate": "exchange_rate",
+    "Withholding Tax Rate": "withholding_tax_rate",
+    "Withholding Tax": "withholding_tax",
 }
 
-SALES_NUMERIC_FIELDS = {"units", "developer_proceeds", "customer_price"}
+SALES_NUMERIC_FIELDS = {
+    "units",
+    "developer_proceeds",
+    "customer_price",
+    "exchange_rate",
+    "withholding_tax_rate",
+    "withholding_tax",
+}
 SALES_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(SALES_COLUMN_MAP)
+SALES_PUBLIC_COLUMN_MAP = _build_public_column_map(SALES_COLUMN_MAP)
 
 FINANCE_COLUMN_MAP = {
     "Start Date": "start_date",
@@ -178,6 +200,7 @@ SUBSCRIPTION_NUMERIC_FIELDS = {
     "pay_as_you_go_win_back",
 }
 SUBSCRIPTION_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(SUBSCRIPTION_COLUMN_MAP)
+SUBSCRIPTION_PUBLIC_COLUMN_MAP = _build_public_column_map(SUBSCRIPTION_COLUMN_MAP)
 
 SUBSCRIPTION_EVENT_COLUMN_MAP = {
     "Event Date": "event_date",
@@ -219,6 +242,9 @@ SUBSCRIPTION_EVENT_NUMERIC_FIELDS = {
     "paid_service_days_recovered",
 }
 SUBSCRIPTION_EVENT_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(
+    SUBSCRIPTION_EVENT_COLUMN_MAP
+)
+SUBSCRIPTION_EVENT_PUBLIC_COLUMN_MAP = _build_public_column_map(
     SUBSCRIPTION_EVENT_COLUMN_MAP
 )
 
@@ -296,6 +322,33 @@ def parse_subscription_event_report(raw: str) -> list[dict[str, Any]]:
         )
         for row in parse_tsv(raw)
     ]
+
+
+def _format_public_rows(
+    rows: list[dict[str, Any]], public_column_map: dict[str, str]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            public_header: row.get(field_name, "")
+            for field_name, public_header in public_column_map.items()
+        }
+        for row in rows
+    ]
+
+
+def format_sales_report_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Format internal sales rows with transformed/local-style public headers."""
+    return _format_public_rows(rows, SALES_PUBLIC_COLUMN_MAP)
+
+
+def format_subscription_report_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Format internal subscription rows with transformed/local-style public headers."""
+    return _format_public_rows(rows, SUBSCRIPTION_PUBLIC_COLUMN_MAP)
+
+
+def format_subscription_event_report_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Format internal subscription event rows with transformed/local-style public headers."""
+    return _format_public_rows(rows, SUBSCRIPTION_EVENT_PUBLIC_COLUMN_MAP)
 
 
 # Product Type Identifier sets

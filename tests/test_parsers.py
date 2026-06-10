@@ -3,7 +3,14 @@
 import gzip
 from pathlib import Path
 
-from apple_mcp.parsers import decode_report_bytes, parse_sales_report, parse_tsv
+from apple_mcp.parsers import (
+    decode_report_bytes,
+    format_sales_report_rows,
+    format_subscription_report_rows,
+    parse_sales_report,
+    parse_subscription_report,
+    parse_tsv,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -92,12 +99,49 @@ def test_parse_sales_report_csv_with_transformed_headers():
 
     assert len(rows) == 1
     assert rows[0]["provider_country"] == "US"
+    assert rows[0]["content_type"] == "APP"
     assert rows[0]["product_type_identifier"] == "1"
     assert rows[0]["developer_proceeds"] == 1.38
     assert rows[0]["begin_date"] == "2024-04-21"
+    assert rows[0]["country"] == "United States"
     assert rows[0]["country_code"] == "US"
     assert rows[0]["currency_of_proceeds"] == "USD"
     assert rows[0]["apple_identifier"] == "123456789"
     assert rows[0]["customer_price"] == 1.99
     assert rows[0]["supported_platforms"] == "iOS"
     assert rows[0]["order_type"] == "Purchase"
+    assert rows[0]["app_name"] == "CubeSolver"
+    assert rows[0]["exchange_rate"] == 1.0
+    assert rows[0]["withholding_tax_rate"] == 0.0
+    assert rows[0]["withholding_tax"] == 0.0
+
+
+def test_format_sales_report_rows_uses_transformed_headers():
+    raw = (FIXTURES / "sample_sales.tsv").read_text()
+
+    formatted_rows = format_sales_report_rows(parse_sales_report(raw))
+
+    assert len(formatted_rows) == 4
+    assert formatted_rows[0]["SKU"] == "com.example.app"
+    assert formatted_rows[0]["ProviderCountry"] == "US"
+    assert formatted_rows[0]["ProductTypeIdentifier"] == "1"
+    assert formatted_rows[0]["CustomerCurrency"] == "USD"
+    assert formatted_rows[0]["CountryCode"] == "US"
+    assert formatted_rows[0]["SupportedPlatforms"] == "iOS"
+
+
+def test_format_subscription_report_rows_uses_transformed_headers():
+    raw = (
+        "App Name\tSubscription Apple ID\tCustomer Price\tCustomer Currency\tDeveloper Proceeds\n"
+        "CubeSolver Pro\t123456789\t9.99\tUSD\t6.99\n"
+    )
+
+    rows = parse_subscription_report(raw)
+    formatted_rows = format_subscription_report_rows(rows)
+
+    assert rows[0]["app_name"] == "CubeSolver Pro"
+    assert rows[0]["subscription_apple_id"] == "123456789"
+    assert formatted_rows[0]["AppName"] == "CubeSolver Pro"
+    assert formatted_rows[0]["SubscriptionAppleID"] == "123456789"
+    assert formatted_rows[0]["CustomerPrice"] == 9.99
+    assert formatted_rows[0]["DeveloperProceeds"] == 6.99
