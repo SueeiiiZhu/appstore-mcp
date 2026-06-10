@@ -1,11 +1,11 @@
 """HTTP client for App Store Connect API."""
 
-import gzip
 from dataclasses import dataclass, field
 
 import httpx
 
 from .auth import generate_token
+from .parsers import decode_report_bytes
 
 BASE_URL = "https://api.appstoreconnect.apple.com"
 
@@ -61,11 +61,7 @@ class ApiClient:
         )
         if resp.status_code >= 400:
             raise ApiError(resp.status_code, resp.text, path)
-
-        content_type = resp.headers.get("content-type", "")
-        if "gzip" in content_type or "a-gzip" in content_type:
-            return gzip.decompress(resp.content).decode("utf-8")
-        return resp.text
+        return decode_report_bytes(resp.content)
 
     async def close(self) -> None:
         await self._http.aclose()

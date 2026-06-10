@@ -7,6 +7,7 @@ from ..cache import ReportCache
 from ..client import ApiClient
 from ..exchange import convert_to_usd, get_rates_to_usd
 from ..parsers import parse_finance_report
+from ..report_source import ReportSource, load_report_text, resolve_finance_report_source
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +18,15 @@ async def get_finance_report(
     client: ApiClient,
     report_date: str,
     region_code: str = "ZZ",
+    source: ReportSource = "auto",
 ) -> dict[str, Any]:
-    cache_key = f"finance:{report_date}:{region_code}:{client.vendor_number}"
+    location = resolve_finance_report_source(client, report_date, region_code, source)
+    cache_key = f"finance:{report_date}:{region_code}:{client.vendor_number}:{location.cache_fragment}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
 
-    raw = await client.fetch_gzipped_report(
-        "/v1/financeReports",
-        {
-            "filter[vendorNumber]": client.vendor_number,
-            "filter[reportType]": "FINANCIAL",
-            "filter[reportDate]": report_date,
-            "filter[regionCode]": region_code,
-        },
-    )
+    raw = await load_report_text(client, location)
     rows = parse_finance_report(raw)
 
     # Separate summary rows (Total_Rows, Total_Amount, Total_Units) from data rows
