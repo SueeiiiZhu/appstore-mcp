@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from apple_mcp.report_source import ReportSourceError, resolve_finance_report_source, resolve_sales_report_source
+from apple_mcp.report_source import ReportSourceError, list_local_reports, resolve_finance_report_source, resolve_sales_report_source
 from apple_mcp.tools import sales as sales_tool
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -79,6 +79,49 @@ def test_get_sales_report_local_requires_local_dir(monkeypatch):
 
     with pytest.raises(ReportSourceError, match="APP_STORE_REPORT_LOCAL_DIR"):
         asyncio.run(sales_tool.get_sales_report(FakeClient(), "2026-04-08", source="local"))
+
+
+def test_list_local_reports_requires_local_dir(monkeypatch):
+    monkeypatch.delenv("APP_STORE_REPORT_LOCAL_DIR", raising=False)
+
+    with pytest.raises(ReportSourceError, match="APP_STORE_REPORT_LOCAL_DIR"):
+        list_local_reports()
+
+
+def test_list_local_reports_filters_and_ignores_unsupported_files(monkeypatch, tmp_path):
+    _write_gzip(tmp_path / "financial" / "ZZ" / "2026-03.tsv.gz", "Start Date\tEnd Date\n")
+    _write_gzip(tmp_path / "subscriptions_event" / "daily" / "2026-04-08.tsv.gz", "Event Date\tEvent\n")
+    _write_gzip(tmp_path / "sales" / "summary" / "daily" / "2026-04-08.tsv.gz", "Provider\tUnits\n")
+    (tmp_path / "sales" / "ignore.me").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "sales" / "ignore.me").write_text("skip")
+    monkeypatch.setenv("APP_STORE_REPORT_LOCAL_DIR", str(tmp_path))
+
+    result = list_local_reports(report_type="FINANCIAL")
+
+    assert result["total_count"] == 1
+    assert result["files"][0]["name"] == "financial/ZZ/2026-03.tsv.gz"
+    assert result["files"][0]["top_level_dir"] == "financial"
+
+
+def test_list_local_reports_respects_prefix_and_limit(monkeypatch, tmp_path):
+    _write_gzip(tmp_path / "sales" / "summary" / "daily" / "2026-04-08.tsv.gz", "Provider\tUnits\n")
+    _write_gzip(tmp_path / "sales" / "summary" / "daily" / "2026-04-09.tsv.gz", "Provider\tUnits\n")
+    _write_gzip(tmp_path / "sales" / "summary" / "monthly" / "2026-04.tsv.gz", "Provider\tUnits\n")
+    monkeypatch.setenv("APP_STORE_REPORT_LOCAL_DIR", str(tmp_path))
+
+    result = list_local_reports(
+        report_type="SALES",
+        report_sub_type="SUMMARY",
+        date_type="DAILY",
+        report_date_prefix="2026-04-0",
+        path_prefix="sales/summary/daily",
+        max_results=1,
+    )
+
+    assert result["total_count"] == 2
+    assert result["returned_count"] == 1
+    assert result["truncated"] is True
+    assert result["files"][0]["name"].startswith("sales/summary/daily/")
 
 
 def test_resolve_finance_report_source_finds_financial_directory_file(monkeypatch, tmp_path):

@@ -156,6 +156,8 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
 
 如果同一个请求匹配到多个本地文件，工具会直接报错，避免静默读错数据。
 
+如果你想先确认本地目录里有哪些历史文件可被发现，可以调用 `list_local_reports`。这个工具只读取 `APP_STORE_REPORT_LOCAL_DIR`，不访问 Apple API，也不需要 API 凭证；但前提是你必须先把该环境变量配置成真实目录。
+
 ## MCP 工具
 
 | 工具 | 用途 |
@@ -165,6 +167,7 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
 | `get_sales_report` | 原始销售报告（SUMMARY/SUBSCRIPTION 等），支持 `source` |
 | `get_subscription_report` | 订阅状态与事件报告，支持 `source` |
 | `get_finance_report` | 按地区的财务结算报告，支持 `source` |
+| `list_local_reports` | 列出 `APP_STORE_REPORT_LOCAL_DIR` 下可用的本地历史报表文件 |
 | `get_customer_reviews` | 用户评论，支持评分过滤和排序 |
 
 ### 示例
@@ -187,6 +190,17 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
     "report_date": "2024-03",
     "region_code": "ZZ",
     "source": "auto"
+  }
+}
+```
+
+```json
+{
+  "tool": "list_local_reports",
+  "arguments": {
+    "report_type": "FINANCIAL",
+    "report_date_prefix": "2024-03",
+    "max_results": 20
   }
 }
 ```

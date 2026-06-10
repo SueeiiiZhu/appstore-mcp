@@ -3,8 +3,9 @@
 import os
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from .client import ApiClient
 from .parsers import decode_report_bytes
@@ -210,6 +211,99 @@ def resolve_finance_report_source(
     )
 
 
+def list_local_reports(
+    *,
+    report_type: str | None = None,
+    report_sub_type: str | None = None,
+    date_type: str | None = None,
+    report_date_prefix: str = "",
+    region_code: str | None = None,
+    vendor_number: str | None = None,
+    path_prefix: str = "",
+    max_results: int = 50,
+) -> dict[str, Any]:
+    root = _get_local_report_root("local")
+    if root is None:
+        raise ReportSourceError(
+            f"Local report listing requires {LOCAL_REPORT_DIR_ENV} to be set to a real directory."
+        )
+
+    normalized_report_type = report_type.upper() if report_type else None
+    normalized_report_sub_type = report_sub_type.upper() if report_sub_type else None
+    normalized_date_type = date_type.upper() if date_type else None
+    normalized_region_code = region_code.lower() if region_code else None
+    normalized_vendor_number = vendor_number.lower() if vendor_number else None
+    normalized_date_prefix = report_date_prefix.lower().strip()
+    normalized_path_prefix = path_prefix.strip().strip("/").lower()
+    capped_max_results = max(1, min(max_results, 500))
+
+    search_roots = _candidate_roots(root, normalized_report_type) if normalized_report_type else [root]
+    files: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+
+    for search_root in search_roots:
+        for candidate in search_root.rglob("*"):
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                continue
+
+            if resolved in seen or not resolved.is_file():
+                continue
+            seen.add(resolved)
+
+            if not str(resolved).lower().endswith(_ALLOWED_SUFFIXES):
+                continue
+            try:
+                relative_path = resolved.relative_to(root).as_posix()
+            except ValueError:
+                continue
+
+            if normalized_path_prefix and not relative_path.lower().startswith(normalized_path_prefix):
+                continue
+            if not _matches_local_report_filters(
+                relative_path,
+                report_type=normalized_report_type,
+                report_sub_type=normalized_report_sub_type,
+                date_type=normalized_date_type,
+                report_date_prefix=normalized_date_prefix,
+                region_code=normalized_region_code,
+                vendor_number=normalized_vendor_number,
+            ):
+                continue
+
+            stat = resolved.stat()
+            files.append(
+                {
+                    "name": relative_path,
+                    "size": stat.st_size,
+                    "updated": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat().replace("+00:00", "Z"),
+                    "top_level_dir": relative_path.split("/", 1)[0],
+                }
+            )
+
+    files.sort(key=lambda item: item["name"])
+    total_count = len(files)
+    returned_files = files[:capped_max_results]
+
+    return {
+        "root": str(root),
+        "total_count": total_count,
+        "returned_count": len(returned_files),
+        "truncated": total_count > capped_max_results,
+        "filters": {
+            "report_type": normalized_report_type,
+            "report_sub_type": normalized_report_sub_type,
+            "date_type": normalized_date_type,
+            "report_date_prefix": normalized_date_prefix or None,
+            "region_code": normalized_region_code,
+            "vendor_number": normalized_vendor_number,
+            "path_prefix": normalized_path_prefix or None,
+        },
+        "files": returned_files,
+    }
+
+
 def _build_local_location(path: Path) -> ReportLocation:
     stat = path.stat()
     return ReportLocation(
@@ -284,6 +378,34 @@ def _find_local_report(root: Path, query: LocalReportQuery) -> Path | None:
         )
 
     return best_path
+
+
+def _matches_local_report_filters(
+    relative_path: str,
+    *,
+    report_type: str | None,
+    report_sub_type: str | None,
+    date_type: str | None,
+    report_date_prefix: str,
+    region_code: str | None,
+    vendor_number: str | None,
+) -> bool:
+    lowered = relative_path.lower()
+    tokens = {token for token in re.split(r"[^a-z0-9]+", lowered) if token}
+
+    if report_type and not _matches_any(lowered, tokens, _aliases_for(report_type)):
+        return False
+    if report_sub_type and not _matches_any(lowered, tokens, _aliases_for(report_sub_type)):
+        return False
+    if date_type and not _matches_any(lowered, tokens, _aliases_for(date_type)):
+        return False
+    if report_date_prefix and report_date_prefix not in lowered:
+        return False
+    if region_code and not _matches_any(lowered, tokens, {region_code}):
+        return False
+    if vendor_number and not _matches_any(lowered, tokens, {vendor_number}):
+        return False
+    return True
 
 
 def _candidate_roots(root: Path, effective_type: str) -> list[Path]:

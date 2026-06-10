@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
 
 from .client import ApiClient, ApiError
-from .report_source import ReportSourceError
+from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
 from .tools.finance import get_finance_report
 from .tools.installs import get_install_stats
 from .tools.revenue import get_revenue_summary
@@ -190,6 +190,40 @@ async def get_finance_report_tool(
         return _result(result)
     except ApiError as e:
         return e.to_user_message()
+    except ReportSourceError as e:
+        return str(e)
+
+
+@mcp.tool(name="list_local_reports")
+def list_local_reports_tool(
+    report_type: Annotated[
+        Literal["SALES", "SUBSCRIPTION", "SUBSCRIPTION_EVENT", "SUBSCRIBER", "SUBSCRIPTION_OFFER_REDEMPTION", "FINANCIAL"] | None,
+        "Optional report type filter for local archive discovery",
+    ] = None,
+    report_sub_type: Annotated[str | None, "Optional report sub-type filter such as SUMMARY or DETAILED"] = None,
+    date_type: Annotated[
+        Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] | None,
+        "Optional report frequency filter",
+    ] = None,
+    report_date_prefix: Annotated[str, "Optional date prefix such as 2024-03 or 2024-04-08"] = "",
+    region_code: Annotated[str | None, "Optional finance region filter such as ZZ or US"] = None,
+    vendor_number: Annotated[str | None, "Optional vendor number filter if embedded in file names"] = None,
+    path_prefix: Annotated[str, "Optional relative path prefix under APP_STORE_REPORT_LOCAL_DIR"] = "",
+    max_results: Annotated[int, "Maximum number of files to return (1-500)"] = 50,
+) -> str:
+    """List locally archived report files under APP_STORE_REPORT_LOCAL_DIR."""
+    try:
+        result = list_local_reports_from_archive(
+            report_type=report_type,
+            report_sub_type=report_sub_type,
+            date_type=date_type,
+            report_date_prefix=report_date_prefix,
+            region_code=region_code,
+            vendor_number=vendor_number,
+            path_prefix=path_prefix,
+            max_results=max_results,
+        )
+        return _result(result)
     except ReportSourceError as e:
         return str(e)
 
