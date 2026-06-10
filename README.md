@@ -160,6 +160,8 @@ Apple 报表 API 有时间窗口限制。对于更早的数据，可以把历史
 
 日期过滤同时兼容 `2024-04-21`、`2024_04_21`、`20240421` 这几种命名形式，便于匹配类似 `appstore_transformed_sales_summary_20240421.csv` 的归档文件。
 
+对于本地 transformed CSV，表头同时兼容 Apple 原始格式（例如 `Provider Country`）和去空格/去分隔符格式（例如 `ProviderCountry`、`ProductTypeIdentifier`）。
+
 如果你想先确认本地目录里有哪些历史文件可被发现，可以调用 `list_local_reports`。这个工具只读取 `APP_STORE_REPORT_LOCAL_DIR`，不访问 Apple API，也不需要 API 凭证；但前提是你必须先把该环境变量配置成真实目录。
 
 ## MCP 工具

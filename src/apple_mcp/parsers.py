@@ -49,6 +49,14 @@ def parse_gzipped_tsv(data: bytes) -> list[dict[str, str]]:
     return parse_tsv(decode_report_bytes(data))
 
 
+def _normalize_header(header: str) -> str:
+    return "".join(ch.lower() for ch in header.lstrip("﻿").strip() if ch.isalnum())
+
+
+def _build_normalized_column_map(column_map: dict[str, str]) -> dict[str, str]:
+    return {_normalize_header(header): field_name for header, field_name in column_map.items()}
+
+
 # Column mapping: Apple TSV header → our field name
 SALES_COLUMN_MAP = {
     "Provider": "provider",
@@ -82,6 +90,7 @@ SALES_COLUMN_MAP = {
 }
 
 SALES_NUMERIC_FIELDS = {"units", "developer_proceeds", "customer_price"}
+SALES_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(SALES_COLUMN_MAP)
 
 FINANCE_COLUMN_MAP = {
     "Start Date": "start_date",
@@ -107,6 +116,7 @@ FINANCE_COLUMN_MAP = {
 }
 
 FINANCE_NUMERIC_FIELDS = {"partner_share", "extended_partner_share", "customer_price", "quantity"}
+FINANCE_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(FINANCE_COLUMN_MAP)
 
 SUBSCRIPTION_COLUMN_MAP = {
     "App Name": "app_name",
@@ -167,6 +177,7 @@ SUBSCRIPTION_NUMERIC_FIELDS = {
     "pay_up_front_win_back",
     "pay_as_you_go_win_back",
 }
+SUBSCRIPTION_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(SUBSCRIPTION_COLUMN_MAP)
 
 SUBSCRIPTION_EVENT_COLUMN_MAP = {
     "Event Date": "event_date",
@@ -207,16 +218,27 @@ SUBSCRIPTION_EVENT_NUMERIC_FIELDS = {
     "quantity",
     "paid_service_days_recovered",
 }
+SUBSCRIPTION_EVENT_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(
+    SUBSCRIPTION_EVENT_COLUMN_MAP
+)
 
 
 def _map_row(
     raw_row: dict[str, str],
     column_map: dict[str, str],
+    normalized_column_map: dict[str, str],
     numeric_fields: set[str],
 ) -> dict[str, Any]:
-    mapped: dict[str, Any] = {}
-    for tsv_header, field_name in column_map.items():
-        value = raw_row.get(tsv_header, "")
+    mapped: dict[str, Any] = {
+        field_name: (0.0 if field_name in numeric_fields else "")
+        for field_name in column_map.values()
+    }
+    for header, value in raw_row.items():
+        field_name = column_map.get(header) or normalized_column_map.get(
+            _normalize_header(header)
+        )
+        if field_name is None:
+            continue
         if field_name in numeric_fields:
             mapped[field_name] = float(value) if value else 0.0
         else:
@@ -226,22 +248,54 @@ def _map_row(
 
 def parse_sales_report(raw: str) -> list[dict[str, Any]]:
     """Parse sales report TSV into typed dicts."""
-    return [_map_row(row, SALES_COLUMN_MAP, SALES_NUMERIC_FIELDS) for row in parse_tsv(raw)]
+    return [
+        _map_row(
+            row,
+            SALES_COLUMN_MAP,
+            SALES_NORMALIZED_COLUMN_MAP,
+            SALES_NUMERIC_FIELDS,
+        )
+        for row in parse_tsv(raw)
+    ]
 
 
 def parse_finance_report(raw: str) -> list[dict[str, Any]]:
     """Parse finance report TSV into typed dicts."""
-    return [_map_row(row, FINANCE_COLUMN_MAP, FINANCE_NUMERIC_FIELDS) for row in parse_tsv(raw)]
+    return [
+        _map_row(
+            row,
+            FINANCE_COLUMN_MAP,
+            FINANCE_NORMALIZED_COLUMN_MAP,
+            FINANCE_NUMERIC_FIELDS,
+        )
+        for row in parse_tsv(raw)
+    ]
 
 
 def parse_subscription_report(raw: str) -> list[dict[str, Any]]:
     """Parse subscription report TSV into typed dicts."""
-    return [_map_row(row, SUBSCRIPTION_COLUMN_MAP, SUBSCRIPTION_NUMERIC_FIELDS) for row in parse_tsv(raw)]
+    return [
+        _map_row(
+            row,
+            SUBSCRIPTION_COLUMN_MAP,
+            SUBSCRIPTION_NORMALIZED_COLUMN_MAP,
+            SUBSCRIPTION_NUMERIC_FIELDS,
+        )
+        for row in parse_tsv(raw)
+    ]
 
 
 def parse_subscription_event_report(raw: str) -> list[dict[str, Any]]:
     """Parse subscription event report TSV into typed dicts."""
-    return [_map_row(row, SUBSCRIPTION_EVENT_COLUMN_MAP, SUBSCRIPTION_EVENT_NUMERIC_FIELDS) for row in parse_tsv(raw)]
+    return [
+        _map_row(
+            row,
+            SUBSCRIPTION_EVENT_COLUMN_MAP,
+            SUBSCRIPTION_EVENT_NORMALIZED_COLUMN_MAP,
+            SUBSCRIPTION_EVENT_NUMERIC_FIELDS,
+        )
+        for row in parse_tsv(raw)
+    ]
 
 
 # Product Type Identifier sets
