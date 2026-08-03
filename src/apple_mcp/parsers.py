@@ -351,6 +351,53 @@ def format_subscription_event_report_rows(rows: list[dict[str, Any]]) -> list[di
     return _format_public_rows(rows, SUBSCRIPTION_EVENT_PUBLIC_COLUMN_MAP)
 
 
+APP_DOWNLOADS_COLUMN_MAP = {
+    "Date": "date",
+    "App Name": "app_name",
+    "App Apple Identifier": "app_apple_identifier",
+    "Download Type": "download_type",
+    "App Version": "app_version",
+    "Device": "device",
+    "Platform Version": "platform_version",
+    "Source Type": "source_type",
+    "Source Info": "source_info",
+    "Campaign": "campaign",
+    "Page Type": "page_type",
+    "Page Title": "page_title",
+    "Pre-Order": "pre_order",
+    "Territory": "territory",
+    "Counts": "counts",
+}
+
+APP_DOWNLOADS_NUMERIC_FIELDS = {"counts"}
+APP_DOWNLOADS_NORMALIZED_COLUMN_MAP = _build_normalized_column_map(APP_DOWNLOADS_COLUMN_MAP)
+APP_DOWNLOADS_PUBLIC_COLUMN_MAP = _build_public_column_map(APP_DOWNLOADS_COLUMN_MAP)
+
+
+def parse_app_downloads_report(raw: str) -> list[dict[str, Any]]:
+    """Parse App Store Downloads (Analytics Reports) TSV into typed dicts.
+
+    Both the "App Store Downloads" (Standard, fewer columns) and
+    "App Store Downloads Detailed" report variants are supported via the
+    same normalized/fault-tolerant column mapping used elsewhere in this
+    module; missing columns simply fall back to their default values.
+    """
+    return [
+        _map_row(
+            row,
+            APP_DOWNLOADS_COLUMN_MAP,
+            APP_DOWNLOADS_NORMALIZED_COLUMN_MAP,
+            APP_DOWNLOADS_NUMERIC_FIELDS,
+        )
+        for row in parse_tsv(raw)
+    ]
+
+
+def format_app_downloads_report_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Format internal app downloads rows with transformed/local-style public headers."""
+    return _format_public_rows(rows, APP_DOWNLOADS_PUBLIC_COLUMN_MAP)
+
+
 # Product Type Identifier sets
 INSTALL_PRODUCT_TYPES = {"1", "1-B", "1E", "1EP", "1EU", "1F", "1T", "F1", "F1-B"}
 UPDATE_PRODUCT_TYPES = {"7", "7F", "7T", "F7"}

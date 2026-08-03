@@ -1,0 +1,5 @@
+Date	App Name	App Apple Identifier	Download Type	App Version	Device	Platform Version	Source Type	Source Info	Campaign	Page Type	Page Title	Pre-Order	Territory	Counts
+2026-04-08	My App	123456789	First-Time Download	1.0	iPhone	17.4	App Store Search			Product Page		false	US	120
+2026-04-08	My App	123456789	Redownload	1.0	iPhone	17.4	App Store Browse			Product Page		false	US	15
+2026-04-08	My App	123456789	First-Time Download	1.0	iPad	17.4	Web Referrer	example.com		Product Page		false	JP	40
+2026-04-08	My App	123456789	Auto-Update	1.1	iPhone	17.4	App Store Search			Product Page		false	GB	8

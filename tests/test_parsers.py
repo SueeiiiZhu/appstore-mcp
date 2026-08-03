@@ -5,8 +5,10 @@ from pathlib import Path
 
 from apple_mcp.parsers import (
     decode_report_bytes,
+    format_app_downloads_report_rows,
     format_sales_report_rows,
     format_subscription_report_rows,
+    parse_app_downloads_report,
     parse_sales_report,
     parse_subscription_report,
     parse_tsv,
@@ -145,3 +147,55 @@ def test_format_subscription_report_rows_uses_transformed_headers():
     assert formatted_rows[0]["SubscriptionAppleID"] == "123456789"
     assert formatted_rows[0]["CustomerPrice"] == 9.99
     assert formatted_rows[0]["DeveloperProceeds"] == 6.99
+
+
+def test_parse_app_downloads_report():
+    raw = (FIXTURES / "sample_app_downloads.tsv").read_text()
+    rows = parse_app_downloads_report(raw)
+
+    assert len(rows) == 4
+    assert rows[0]["date"] == "2026-04-08"
+    assert rows[0]["app_name"] == "My App"
+    assert rows[0]["app_apple_identifier"] == "123456789"
+    assert rows[0]["download_type"] == "First-Time Download"
+    assert rows[0]["device"] == "iPhone"
+    assert rows[0]["territory"] == "US"
+    assert rows[0]["counts"] == 120.0
+
+    assert rows[2]["source_type"] == "Web Referrer"
+    assert rows[2]["source_info"] == "example.com"
+    assert rows[2]["territory"] == "JP"
+    assert rows[2]["counts"] == 40.0
+
+    assert rows[3]["download_type"] == "Auto-Update"
+    assert rows[3]["territory"] == "GB"
+    assert rows[3]["counts"] == 8.0
+
+
+def test_parse_app_downloads_report_standard_missing_columns_use_defaults():
+    # The "Standard" App Store Downloads report has fewer columns than "Detailed";
+    # missing columns should fall back to defaults rather than erroring.
+    raw = "Date\tApp Name\tTerritory\tCounts\n2026-04-08\tMy App\tUS\t99\n"
+    rows = parse_app_downloads_report(raw)
+
+    assert len(rows) == 1
+    assert rows[0]["date"] == "2026-04-08"
+    assert rows[0]["app_name"] == "My App"
+    assert rows[0]["territory"] == "US"
+    assert rows[0]["counts"] == 99.0
+    # Missing dimension columns default to empty string; missing numeric to 0.0
+    assert rows[0]["download_type"] == ""
+    assert rows[0]["device"] == ""
+
+
+def test_format_app_downloads_report_rows_uses_transformed_headers():
+    raw = (FIXTURES / "sample_app_downloads.tsv").read_text()
+
+    formatted_rows = format_app_downloads_report_rows(parse_app_downloads_report(raw))
+
+    assert len(formatted_rows) == 4
+    assert formatted_rows[0]["AppName"] == "My App"
+    assert formatted_rows[0]["AppAppleIdentifier"] == "123456789"
+    assert formatted_rows[0]["DownloadType"] == "First-Time Download"
+    assert formatted_rows[0]["Territory"] == "US"
+    assert formatted_rows[0]["Counts"] == 120.0

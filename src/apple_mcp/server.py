@@ -7,8 +7,10 @@ from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 
+from .analytics_report_source import AnalyticsReportNotReadyError
 from .client import ApiClient, ApiError
 from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
+from .tools.app_downloads import get_app_downloads_report
 from .tools.finance import get_finance_report
 from .tools.installs import get_install_stats
 from .tools.revenue import get_revenue_summary
@@ -226,6 +228,46 @@ def list_local_reports_tool(
         return _result(result)
     except ReportSourceError as e:
         return str(e)
+
+
+@mcp.tool(name="get_app_downloads_report")
+async def get_app_downloads_report_tool(
+    app_id: Annotated[str, "Apple app ID (numeric identifier)"],
+    report_date: Annotated[str, "Report date in YYYY-MM-DD format (e.g. 2026-04-08)"],
+    group_by: Annotated[
+        Literal["app", "territory", "download_type", "source_type"],
+        "Dimension to group downloads by",
+    ] = "download_type",
+    granularity: Annotated[
+        Literal["DAILY", "WEEKLY", "MONTHLY"],
+        "Report instance granularity (WEEKLY/MONTHLY only supported for the Detailed report)",
+    ] = "DAILY",
+    detailed: Annotated[
+        bool,
+        "Use the 'App Store Downloads Detailed' report instead of the Standard one",
+    ] = True,
+) -> str:
+    """Get App Store Downloads counts via the Analytics Reports API, with aggregation by app, territory, download type, or source type."""
+    try:
+        result = await get_app_downloads_report(
+            _get_client(),
+            app_id,
+            report_date,
+            group_by,
+            granularity,
+            detailed,
+        )
+        return _result(result)
+    except AnalyticsReportNotReadyError as e:
+        return str(e)
+    except ApiError as e:
+        if e.status_code == 403:
+            return (
+                "Creating or accessing this Analytics Report Request requires the Admin role "
+                "on this App Store Connect API key. Ask an Admin to grant access, or use a key "
+                "with Admin permissions."
+            )
+        return e.to_user_message()
 
 
 @mcp.tool(name="get_customer_reviews")

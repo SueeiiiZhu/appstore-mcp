@@ -30,12 +30,14 @@ uv run pytest tests/test_parsers.py::test_parse_tsv_basic -v
 ```
 src/apple_mcp/
   __main__.py   — CLI entry point, parses --http/--port/--host, calls mcp.run()
-  server.py     — FastMCP instance, registers 6 MCP tools as thin wrappers
+  server.py     — FastMCP instance, registers 8 MCP tools as thin wrappers
   auth.py       — JWT (ES256) token generation with in-memory cache (15 min TTL)
-  client.py     — ApiClient: fetch_json() for REST endpoints, fetch_gzipped_report() for report downloads
+  client.py     — ApiClient: fetch_json()/post_json() for REST endpoints, fetch_gzipped_report() for report downloads, plus Analytics Reports API methods (create_analytics_report_request, list_analytics_report_requests, list_analytics_reports, list_report_instances, list_report_segments, fetch_analytics_segment)
   cache.py      — LRU in-memory ReportCache for immutable reports
-  parsers.py    — TSV parsing + column mapping (SALES_COLUMN_MAP, FINANCE_COLUMN_MAP) + product-type constants
-  tools/        — One module per MCP tool: revenue, installs, sales, subscriptions, finance, reviews
+  parsers.py    — TSV parsing + column mapping (SALES_COLUMN_MAP, FINANCE_COLUMN_MAP, APP_DOWNLOADS_COLUMN_MAP) + product-type constants
+  report_source.py            — resolves classic report downloads (Reporting API) from local archive or Apple API
+  analytics_report_source.py  — resolves Analytics Reports API multi-step flow (report request → report → instance → segment URL) for reports like "App Store Downloads"
+  tools/        — One module per MCP tool: revenue, installs, sales, subscriptions, finance, reviews, app_downloads
 ```
 
 **Data flow:** MCP tool handler in `server.py` → tool function in `tools/` → `ApiClient` (with JWT from `auth.py`) → Apple API → gzip/JSON response → `parsers.py` → aggregation → JSON result.
