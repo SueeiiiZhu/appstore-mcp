@@ -1,7 +1,7 @@
 """Resolve segment download URLs for Apple's Analytics Reports API.
 
 Handles the multi-step Analytics Reports flow used by reports such as
-"App Store Downloads" / "App Store Downloads Detailed":
+"App Store Downloads Report" (Standard / Detailed):
 
 1. Ensure an ONGOING analyticsReportRequest exists for the app.
 2. Find the analyticsReport with the desired name (Standard vs Detailed).
@@ -13,8 +13,12 @@ import asyncio
 
 from .client import ApiClient, ApiError
 
-_APP_STORE_DOWNLOADS_STANDARD_NAME = "App Store Downloads"
-_APP_STORE_DOWNLOADS_DETAILED_NAME = "App Store Downloads Detailed"
+# Apple's exact `attributes.name` strings for report variants aren't reliably
+# documented (and filter[name] server-side filtering isn't confirmed either),
+# so reports are matched locally by substring: name contains "App Store
+# Downloads", and "Detailed" presence/absence picks the variant.
+_APP_STORE_DOWNLOADS_NAME_FRAGMENT = "app store downloads"
+_DETAILED_FRAGMENT = "detailed"
 
 _POLL_BACKOFF_SECONDS = (5, 10, 20)
 
@@ -75,14 +79,12 @@ async def resolve_app_downloads_segment_urls(
     report_date and max_wait_seconds is 0 (or polling is exhausted).
     """
     report_request_id = await ensure_ongoing_report_request(client, app_id)
-    report_name = (
-        _APP_STORE_DOWNLOADS_DETAILED_NAME if detailed else _APP_STORE_DOWNLOADS_STANDARD_NAME
-    )
+    report_label = "App Store Downloads (Detailed)" if detailed else "App Store Downloads"
 
-    report_id = await _find_report_id(client, report_request_id, report_name)
+    report_id = await _find_report_id(client, report_request_id, detailed=detailed)
     if report_id is None:
         raise AnalyticsReportNotReadyError(
-            f"Report '{report_name}' is not available for this app yet. "
+            f"Report '{report_label}' is not available for this app yet. "
             "Analytics report data is typically ready at T+2 days; confirm the app has "
             "sufficient traffic and that the ONGOING report request has had time to populate "
             "(this can take up to 48 hours after first being created)."
@@ -98,7 +100,7 @@ async def resolve_app_downloads_segment_urls(
 
         if remaining_wait <= 0 or not delays:
             raise AnalyticsReportNotReadyError(
-                f"No '{report_name}' report instance found for report_date={report_date} "
+                f"No '{report_label}' report instance found for report_date={report_date} "
                 f"granularity={granularity}. Analytics data is typically generated at T+2 days "
                 "- confirm report_date is not too recent (or too old; data is generally "
                 "retrievable back to 2024-01-01)."
@@ -121,12 +123,17 @@ async def resolve_app_downloads_segment_urls(
     return urls
 
 
-async def _find_report_id(client: ApiClient, report_request_id: str, report_name: str) -> str | None:
-    # filter[name] is passed server-side, but we still verify the name locally in case
-    # the API ignores the filter and returns the full unfiltered list.
-    listing = await client.list_analytics_reports(report_request_id, name=report_name)
+async def _find_report_id(client: ApiClient, report_request_id: str, detailed: bool) -> str | None:
+    # Apple's exact `attributes.name` string isn't reliably documented, and
+    # server-side filter[name] support isn't confirmed either, so this fetches
+    # the full unfiltered list and matches locally by substring/case-insensitive.
+    listing = await client.list_analytics_reports(report_request_id)
     for item in listing.get("data", []):
-        if item.get("attributes", {}).get("name") == report_name:
+        name = (item.get("attributes", {}).get("name") or "").strip().lower()
+        if _APP_STORE_DOWNLOADS_NAME_FRAGMENT not in name:
+            continue
+        is_detailed = _DETAILED_FRAGMENT in name
+        if is_detailed == detailed:
             return item.get("id")
     return None
 

@@ -68,8 +68,7 @@ class FakeAnalyticsClient:
 
     async def list_analytics_reports(self, report_request_id: str, name: str | None = None) -> dict:
         self.list_reports_calls.append((report_request_id, name))
-        matching = [r for r in self.reports if name is None or r["attributes"]["name"] == name]
-        return {"data": matching}
+        return {"data": self.reports}
 
     async def list_report_instances(
         self, report_id: str, granularity: str = "DAILY", processing_date: str | None = None
@@ -93,8 +92,8 @@ class FakeAnalyticsClient:
 
 def _standard_reports():
     return [
-        {"id": "report-standard", "attributes": {"name": "App Store Downloads"}},
-        {"id": "report-detailed", "attributes": {"name": "App Store Downloads Detailed"}},
+        {"id": "report-standard", "attributes": {"name": "App Store Downloads Report"}},
+        {"id": "report-detailed", "attributes": {"name": "App Store Downloads Report Detailed"}},
     ]
 
 
@@ -156,8 +155,6 @@ def test_resolve_app_downloads_segment_urls_happy_path():
     )
 
     assert urls == ["https://presigned.example.com/segment.gz"]
-    # Detailed report name was requested
-    assert client.list_reports_calls[-1] == ("req-1", "App Store Downloads Detailed")
 
 
 def test_resolve_app_downloads_segment_urls_uses_standard_name_when_not_detailed():
@@ -168,9 +165,11 @@ def test_resolve_app_downloads_segment_urls_uses_standard_name_when_not_detailed
         segments=_standard_segments(),
     )
 
-    asyncio.run(resolve_app_downloads_segment_urls(client, "app-1", "2026-04-08", detailed=False))
+    urls = asyncio.run(
+        resolve_app_downloads_segment_urls(client, "app-1", "2026-04-08", detailed=False)
+    )
 
-    assert client.list_reports_calls[-1] == ("req-1", "App Store Downloads")
+    assert urls == ["https://presigned.example.com/segment.gz"]
 
 
 def test_resolve_app_downloads_segment_urls_raises_when_report_missing():
@@ -178,6 +177,30 @@ def test_resolve_app_downloads_segment_urls_raises_when_report_missing():
 
     with pytest.raises(AnalyticsReportNotReadyError):
         asyncio.run(resolve_app_downloads_segment_urls(client, "app-1", "2026-04-08"))
+
+
+def test_resolve_app_downloads_segment_urls_matches_name_case_insensitively():
+    # Apple's exact `attributes.name` casing/wording isn't reliably documented,
+    # so matching must not depend on an exact-string guess.
+    client = FakeAnalyticsClient(
+        existing_request_id="req-1",
+        reports=[
+            {"id": "report-standard", "attributes": {"name": "app store downloads report"}},
+            {"id": "report-detailed", "attributes": {"name": "App Store Downloads Report - Detailed"}},
+        ],
+        instances=_standard_instances(),
+        segments=_standard_segments(),
+    )
+
+    urls = asyncio.run(
+        resolve_app_downloads_segment_urls(client, "app-1", "2026-04-08", detailed=False)
+    )
+    assert urls == ["https://presigned.example.com/segment.gz"]
+
+    detailed_urls = asyncio.run(
+        resolve_app_downloads_segment_urls(client, "app-1", "2026-04-08", detailed=True)
+    )
+    assert detailed_urls == ["https://presigned.example.com/segment.gz"]
 
 
 def test_resolve_app_downloads_segment_urls_raises_when_no_matching_instance():
