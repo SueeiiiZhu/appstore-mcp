@@ -1,7 +1,7 @@
 """Resolve segment download URLs for Apple's Analytics Reports API.
 
 Handles the multi-step Analytics Reports flow used by reports such as
-"App Store Downloads Report" (Standard / Detailed):
+"App Downloads" (Standard / Detailed):
 
 1. Ensure an ONGOING analyticsReportRequest exists for the app.
 2. Find the analyticsReport with the desired name (Standard vs Detailed).
@@ -15,9 +15,11 @@ from .client import ApiClient, ApiError
 
 # Apple's exact `attributes.name` strings for report variants aren't reliably
 # documented (and filter[name] server-side filtering isn't confirmed either),
-# so reports are matched locally by substring: name contains "App Store
-# Downloads", and "Detailed" presence/absence picks the variant.
-_APP_STORE_DOWNLOADS_NAME_FRAGMENT = "app store downloads"
+# so reports are matched locally by substring: name contains "App Downloads"
+# (confirmed via live API response to be e.g. "App Downloads Standard" /
+# "App Downloads Detailed" - no "Store" or "Report" in the name), and
+# "Detailed" presence/absence picks the variant.
+_APP_DOWNLOADS_NAME_FRAGMENT = "app downloads"
 _DETAILED_FRAGMENT = "detailed"
 
 _POLL_BACKOFF_SECONDS = (5, 10, 20)
@@ -73,13 +75,13 @@ async def resolve_app_downloads_segment_urls(
     detailed: bool = True,
     max_wait_seconds: int = 0,
 ) -> list[str]:
-    """Resolve pre-signed segment download URLs for the App Store Downloads report.
+    """Resolve pre-signed segment download URLs for the App Downloads report.
 
     Raises AnalyticsReportNotReadyError if no report instance matches
     report_date and max_wait_seconds is 0 (or polling is exhausted).
     """
     report_request_id = await ensure_ongoing_report_request(client, app_id)
-    report_label = "App Store Downloads (Detailed)" if detailed else "App Store Downloads"
+    report_label = "App Downloads Detailed" if detailed else "App Downloads Standard"
 
     report_id = await _find_report_id(client, report_request_id, detailed=detailed)
     if report_id is None:
@@ -130,7 +132,7 @@ async def _find_report_id(client: ApiClient, report_request_id: str, detailed: b
     listing = await client.list_analytics_reports(report_request_id)
     for item in listing.get("data", []):
         name = (item.get("attributes", {}).get("name") or "").strip().lower()
-        if _APP_STORE_DOWNLOADS_NAME_FRAGMENT not in name:
+        if _APP_DOWNLOADS_NAME_FRAGMENT not in name:
             continue
         is_detailed = _DETAILED_FRAGMENT in name
         if is_detailed == detailed:

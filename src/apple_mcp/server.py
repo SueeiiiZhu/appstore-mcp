@@ -244,7 +244,7 @@ async def get_app_downloads_report_tool(
     ] = "DAILY",
     detailed: Annotated[
         bool,
-        "Use the 'App Store Downloads Detailed' report instead of the Standard one",
+        "Use the 'App Downloads Detailed' report instead of the Standard one",
     ] = True,
 ) -> str:
     """Get App Store Downloads counts via the Analytics Reports API, with aggregation by app, territory, download type, or source type."""

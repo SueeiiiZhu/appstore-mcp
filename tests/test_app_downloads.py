@@ -92,8 +92,8 @@ class FakeAnalyticsClient:
 
 def _standard_reports():
     return [
-        {"id": "report-standard", "attributes": {"name": "App Store Downloads Report"}},
-        {"id": "report-detailed", "attributes": {"name": "App Store Downloads Report Detailed"}},
+        {"id": "report-standard", "attributes": {"name": "App Downloads Standard"}},
+        {"id": "report-detailed", "attributes": {"name": "App Downloads Detailed"}},
     ]
 
 
@@ -185,8 +185,8 @@ def test_resolve_app_downloads_segment_urls_matches_name_case_insensitively():
     client = FakeAnalyticsClient(
         existing_request_id="req-1",
         reports=[
-            {"id": "report-standard", "attributes": {"name": "app store downloads report"}},
-            {"id": "report-detailed", "attributes": {"name": "App Store Downloads Report - Detailed"}},
+            {"id": "report-standard", "attributes": {"name": "app downloads standard"}},
+            {"id": "report-detailed", "attributes": {"name": "App Downloads - Detailed"}},
         ],
         instances=_standard_instances(),
         segments=_standard_segments(),
