@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 
-from .analytics_report_source import AnalyticsReportNotReadyError
+from .analytics_report_source import AnalyticsReportNotReadyError, ensure_ongoing_report_request
 from .client import ApiClient, ApiError
 from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
 from .tools.app_downloads import get_app_downloads_report
@@ -258,6 +258,31 @@ async def get_app_downloads_report_tool(
             detailed,
         )
         return _result(result)
+    except AnalyticsReportNotReadyError as e:
+        return str(e)
+    except ApiError as e:
+        if e.status_code == 403:
+            return (
+                "Creating or accessing this Analytics Report Request requires the Admin role "
+                "on this App Store Connect API key. Ask an Admin to grant access, or use a key "
+                "with Admin permissions."
+            )
+        return e.to_user_message()
+
+
+@mcp.tool(name="debug_list_analytics_reports")
+async def debug_list_analytics_reports_tool(
+    app_id: Annotated[str, "Apple app ID (numeric identifier)"],
+) -> str:
+    """TEMPORARY diagnostic tool: dumps the raw ONGOING analyticsReportRequest id and the
+    raw analyticsReports list for an app, unfiltered, straight from Apple's API. Used to
+    confirm the real report name/state Apple returns. Remove once the App Store Downloads
+    report lookup is confirmed working end to end."""
+    try:
+        client = _get_client()
+        request_id = await ensure_ongoing_report_request(client, app_id)
+        reports = await client.list_analytics_reports(request_id)
+        return _result({"report_request_id": request_id, "reports": reports})
     except AnalyticsReportNotReadyError as e:
         return str(e)
     except ApiError as e:
