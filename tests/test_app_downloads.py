@@ -11,6 +11,7 @@ import pytest
 from apple_mcp.analytics_report_source import (
     AnalyticsReportNotReadyError,
     ensure_ongoing_report_request,
+    ensure_report_request,
     resolve_app_downloads_segment_urls,
 )
 from apple_mcp.client import ApiError
@@ -26,6 +27,7 @@ class FakeAnalyticsClient:
         self,
         *,
         existing_request_id: str | None = None,
+        existing_request_ids: dict[str, str] | None = None,
         create_response: dict | None = None,
         create_error: ApiError | None = None,
         reports: list[dict] | None = None,
@@ -33,7 +35,11 @@ class FakeAnalyticsClient:
         segments: list[dict] | None = None,
         segment_raw: str = "",
     ):
-        self.existing_request_id = existing_request_id
+        # existing_request_id is a shorthand for an ONGOING request id; use
+        # existing_request_ids ({access_type: id}) to cover multiple access types.
+        self.existing_request_ids: dict[str, str] = dict(existing_request_ids or {})
+        if existing_request_id:
+            self.existing_request_ids.setdefault("ONGOING", existing_request_id)
         self.create_response = create_response
         self.create_error = create_error
         self.reports = reports if reports is not None else []
@@ -42,27 +48,28 @@ class FakeAnalyticsClient:
         self.segment_raw = segment_raw
 
         self.create_calls: list[tuple[str, str]] = []
-        self.list_request_calls: list[str] = []
+        self.list_request_calls: list[tuple[str, str]] = []
         self.list_reports_calls: list[tuple[str, str | None]] = []
         self.list_instances_calls: list[tuple[str, str, str | None]] = []
         self.list_segments_calls: list[str] = []
         self.fetch_segment_calls: list[str] = []
 
-    async def list_analytics_report_requests(self, app_id: str) -> dict:
-        self.list_request_calls.append(app_id)
-        if self.existing_request_id:
-            return {
-                "data": [
-                    {"id": self.existing_request_id, "attributes": {"accessType": "ONGOING"}}
-                ]
-            }
+    @property
+    def existing_request_id(self) -> str | None:
+        return self.existing_request_ids.get("ONGOING")
+
+    async def list_analytics_report_requests(self, app_id: str, access_type: str = "ONGOING") -> dict:
+        self.list_request_calls.append((app_id, access_type))
+        existing_id = self.existing_request_ids.get(access_type)
+        if existing_id:
+            return {"data": [{"id": existing_id, "attributes": {"accessType": access_type}}]}
         return {"data": []}
 
     async def create_analytics_report_request(self, app_id: str, access_type: str = "ONGOING") -> dict:
         self.create_calls.append((app_id, access_type))
         if self.create_error is not None:
             # After the "conflict", pretend the request now exists for re-list.
-            self.existing_request_id = self.existing_request_id or "req-existing"
+            self.existing_request_ids.setdefault(access_type, "req-existing")
             raise self.create_error
         return self.create_response or {"data": {"id": "req-new"}}
 
@@ -139,6 +146,49 @@ def test_ensure_ongoing_report_request_reraises_non_409_errors():
         asyncio.run(ensure_ongoing_report_request(client, "app-1"))
 
 
+# --- ensure_report_request (ONE_TIME_SNAPSHOT) ------------------------------------------
+
+
+def test_ensure_report_request_creates_one_time_snapshot_when_missing():
+    client = FakeAnalyticsClient(create_response={"data": {"id": "snap-new"}})
+    request_id = asyncio.run(ensure_report_request(client, "app-1", access_type="ONE_TIME_SNAPSHOT"))
+
+    assert request_id == "snap-new"
+    assert client.create_calls == [("app-1", "ONE_TIME_SNAPSHOT")]
+    assert client.list_request_calls == [("app-1", "ONE_TIME_SNAPSHOT")]
+
+
+def test_ensure_report_request_reuses_existing_one_time_snapshot():
+    client = FakeAnalyticsClient(existing_request_ids={"ONE_TIME_SNAPSHOT": "snap-1"})
+    request_id = asyncio.run(ensure_report_request(client, "app-1", access_type="ONE_TIME_SNAPSHOT"))
+
+    assert request_id == "snap-1"
+    assert client.create_calls == []
+
+
+def test_ensure_report_request_falls_back_on_409_for_one_time_snapshot():
+    client = FakeAnalyticsClient(create_error=ApiError(409, "already exists", "/v1/analyticsReportRequests"))
+    request_id = asyncio.run(ensure_report_request(client, "app-1", access_type="ONE_TIME_SNAPSHOT"))
+
+    assert request_id == "req-existing"
+    assert client.create_calls == [("app-1", "ONE_TIME_SNAPSHOT")]
+
+
+def test_ensure_report_request_ongoing_and_snapshot_are_independent():
+    # An existing ONGOING request must not satisfy a ONE_TIME_SNAPSHOT lookup, and vice versa.
+    client = FakeAnalyticsClient(
+        existing_request_ids={"ONGOING": "ongoing-1"},
+        create_response={"data": {"id": "snap-new"}},
+    )
+
+    snapshot_id = asyncio.run(ensure_report_request(client, "app-1", access_type="ONE_TIME_SNAPSHOT"))
+    ongoing_id = asyncio.run(ensure_report_request(client, "app-1", access_type="ONGOING"))
+
+    assert snapshot_id == "snap-new"
+    assert ongoing_id == "ongoing-1"
+    assert client.create_calls == [("app-1", "ONE_TIME_SNAPSHOT")]
+
+
 # --- resolve_app_downloads_segment_urls ------------------------------------------------
 
 
@@ -213,6 +263,26 @@ def test_resolve_app_downloads_segment_urls_raises_when_no_matching_instance():
 
     with pytest.raises(AnalyticsReportNotReadyError, match="T\\+2"):
         asyncio.run(resolve_app_downloads_segment_urls(client, "app-1", "2026-04-08"))
+
+
+def test_resolve_app_downloads_segment_urls_uses_one_time_snapshot_request():
+    client = FakeAnalyticsClient(
+        existing_request_ids={"ONE_TIME_SNAPSHOT": "snap-1"},
+        reports=_standard_reports(),
+        instances=_standard_instances(date="2026-07-15"),
+        segments=_standard_segments(),
+    )
+
+    urls = asyncio.run(
+        resolve_app_downloads_segment_urls(
+            client, "app-1", "2026-07-15", detailed=True, access_type="ONE_TIME_SNAPSHOT"
+        )
+    )
+
+    assert urls == ["https://presigned.example.com/segment.gz"]
+    assert client.list_request_calls == [("app-1", "ONE_TIME_SNAPSHOT")]
+    # Must not touch/require an ONGOING request when access_type is ONE_TIME_SNAPSHOT.
+    assert client.existing_request_id is None
 
 
 def test_resolve_app_downloads_segment_urls_raises_when_no_segments():

@@ -90,10 +90,10 @@ class ApiClient:
         }
         return await self.post_json("/v1/analyticsReportRequests", body)
 
-    async def list_analytics_report_requests(self, app_id: str) -> dict:
+    async def list_analytics_report_requests(self, app_id: str, access_type: str = "ONGOING") -> dict:
         return await self.fetch_json(
             f"/v1/apps/{app_id}/analyticsReportRequests",
-            {"filter[accessType]": "ONGOING"},
+            {"filter[accessType]": access_type},
         )
 
     async def list_analytics_reports(self, report_request_id: str, name: str | None = None) -> dict:

@@ -246,6 +246,12 @@ async def get_app_downloads_report_tool(
         bool,
         "Use the 'App Downloads Detailed' report instead of the Standard one",
     ] = True,
+    access_type: Annotated[
+        Literal["ONGOING", "ONE_TIME_SNAPSHOT"],
+        "ONGOING covers data from ~24-48h after the report request was first created, onward. "
+        "Use ONE_TIME_SNAPSHOT for historical dates before that (Apple generally retains data "
+        "back to 2024-01-01) - it creates a one-off backfill request, no new data after that.",
+    ] = "ONGOING",
 ) -> str:
     """Get App Store Downloads counts via the Analytics Reports API, with aggregation by app, territory, download type, or source type."""
     try:
@@ -256,6 +262,7 @@ async def get_app_downloads_report_tool(
             group_by,
             granularity,
             detailed,
+            access_type,
         )
         return _result(result)
     except AnalyticsReportNotReadyError as e:

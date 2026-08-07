@@ -145,6 +145,45 @@ def test_list_analytics_reports_passes_name_filter():
     assert captured["params"]["filter[name]"] == "App Store Downloads"
 
 
+def test_list_analytics_report_requests_defaults_to_ongoing_filter():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": []})
+
+    client = _make_client(handler)
+    asyncio.run(client.list_analytics_report_requests("999"))
+
+    assert captured["params"]["filter[accessType]"] == "ONGOING"
+
+
+def test_list_analytics_report_requests_supports_one_time_snapshot_filter():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": []})
+
+    client = _make_client(handler)
+    asyncio.run(client.list_analytics_report_requests("999", access_type="ONE_TIME_SNAPSHOT"))
+
+    assert captured["params"]["filter[accessType]"] == "ONE_TIME_SNAPSHOT"
+
+
+def test_create_analytics_report_request_supports_one_time_snapshot():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"id": "snap-1"}})
+
+    client = _make_client(handler)
+    asyncio.run(client.create_analytics_report_request("999", access_type="ONE_TIME_SNAPSHOT"))
+
+    assert captured["body"]["data"]["attributes"]["accessType"] == "ONE_TIME_SNAPSHOT"
+
+
 def test_list_report_segments_returns_data():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

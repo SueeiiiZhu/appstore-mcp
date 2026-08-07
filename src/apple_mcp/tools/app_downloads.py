@@ -28,8 +28,9 @@ async def _get_app_downloads_rows_internal(
     report_date: str,
     granularity: str = "DAILY",
     detailed: bool = True,
+    access_type: str = "ONGOING",
 ) -> list[dict[str, Any]]:
-    cache_key = f"app_downloads:{app_id}:{report_date}:{granularity}:{detailed}"
+    cache_key = f"app_downloads:{app_id}:{report_date}:{granularity}:{detailed}:{access_type}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
@@ -41,6 +42,7 @@ async def _get_app_downloads_rows_internal(
         report_date,
         granularity=granularity,
         detailed=detailed,
+        access_type=access_type,
     )
 
     rows: list[dict[str, Any]] = []
@@ -59,9 +61,10 @@ async def get_app_downloads_report(
     group_by: str = "download_type",
     granularity: str = "DAILY",
     detailed: bool = True,
+    access_type: str = "ONGOING",
 ) -> dict[str, Any]:
     rows = await _get_app_downloads_rows_internal(
-        client, app_id, report_date, granularity, detailed
+        client, app_id, report_date, granularity, detailed, access_type
     )
     key_fn = _group_key_fn(group_by)
 
