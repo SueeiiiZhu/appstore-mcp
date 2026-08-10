@@ -7,8 +7,13 @@ from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 
-from .analytics_report_source import AnalyticsReportNotReadyError, ensure_report_request
+from .analytics_report_source import (
+    AnalyticsReportNotReadyError,
+    ensure_report_request,
+    resolve_app_downloads_segment_urls,
+)
 from .client import ApiClient, ApiError
+from .parsers import parse_app_downloads_report, parse_tsv
 from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
 from .tools.app_downloads import get_app_downloads_report
 from .tools.finance import get_finance_report
@@ -310,6 +315,97 @@ async def debug_list_app_downloads_instances_tool(
             return _result({"report_request_id": request_id, "error": "report not found", "reports": reports})
         instances = await client.list_report_instances(report_id, granularity=granularity)
         return _result({"report_request_id": request_id, "report_id": report_id, "instances": instances})
+    except AnalyticsReportNotReadyError as e:
+        return str(e)
+    except ApiError as e:
+        if e.status_code == 403:
+            return (
+                "Creating or accessing this Analytics Report Request requires the Admin role "
+                "on this App Store Connect API key. Ask an Admin to grant access, or use a key "
+                "with Admin permissions."
+            )
+        return e.to_user_message()
+
+
+@mcp.tool(name="debug_dump_app_downloads_segment")
+async def debug_dump_app_downloads_segment_tool(
+    app_id: Annotated[str, "Apple app ID (numeric identifier)"],
+    report_date: Annotated[str, "Report date in YYYY-MM-DD format (e.g. 2026-08-07)"],
+    detailed: Annotated[bool, "Use the 'App Downloads Detailed' report instead of the Standard one"] = True,
+    granularity: Annotated[
+        Literal["DAILY", "WEEKLY", "MONTHLY"], "Report instance granularity"
+    ] = "DAILY",
+    access_type: Annotated[
+        Literal["ONGOING", "ONE_TIME_SNAPSHOT"],
+        "Which analyticsReportRequest to inspect",
+    ] = "ONGOING",
+    sample_size: Annotated[int, "Number of raw sample rows to include (1-20)"] = 5,
+) -> str:
+    """TEMPORARY diagnostic tool: proves whether a given app_id's App Downloads segment for a
+    specific date actually carries per-Territory data that sums to the app's worldwide total.
+    Returns: the analyticsReportRequest's bound app_id, the matched report name, the raw file
+    header, a few raw sample rows, whether Territory/App Name/App Apple Identifier/SKU-like
+    columns are present, a Territory-level counts breakdown with its sum, and the overall
+    (worldwide) counts sum for the same rows - so the two sums can be compared directly."""
+    try:
+        client = _get_client()
+        segment_urls = await resolve_app_downloads_segment_urls(
+            client,
+            app_id,
+            report_date,
+            granularity=granularity,
+            detailed=detailed,
+            access_type=access_type,
+        )
+
+        header: list[str] = []
+        raw_sample_rows: list[dict[str, str]] = []
+        all_rows: list[dict] = []
+        for url in segment_urls:
+            raw = await client.fetch_analytics_segment(url)
+            lines = [line for line in raw.splitlines() if line.strip()]
+            if lines and not header:
+                header = lines[0].split("\t") if "\t" in lines[0] else lines[0].split(",")
+            raw_rows = parse_tsv(raw)
+            if not raw_sample_rows:
+                raw_sample_rows = raw_rows[:sample_size]
+            all_rows.extend(parse_app_downloads_report(raw))
+
+        territory_breakdown: dict[str, int] = {}
+        ww_total = 0
+        app_ids_seen: set[str] = set()
+        app_names_seen: set[str] = set()
+        for row in all_rows:
+            counts = int(row.get("counts") or 0)
+            ww_total += counts
+            territory = row.get("territory") or "Unknown"
+            territory_breakdown[territory] = territory_breakdown.get(territory, 0) + counts
+            if row.get("app_apple_identifier"):
+                app_ids_seen.add(str(row.get("app_apple_identifier")))
+            if row.get("app_name"):
+                app_names_seen.add(str(row.get("app_name")))
+
+        territory_sum = sum(territory_breakdown.values())
+
+        return _result(
+            {
+                "requested_app_id": app_id,
+                "app_apple_identifiers_in_rows": sorted(app_ids_seen),
+                "app_names_in_rows": sorted(app_names_seen),
+                "report_date": report_date,
+                "access_type": access_type,
+                "header": header,
+                "sample_rows": raw_sample_rows,
+                "territory_field_present": "territory" in header
+                or any("territory" in h.lower() for h in header),
+                "territory_breakdown": dict(
+                    sorted(territory_breakdown.items(), key=lambda kv: kv[1], reverse=True)
+                ),
+                "territory_sum": territory_sum,
+                "ww_total": ww_total,
+                "territory_sum_matches_ww_total": territory_sum == ww_total,
+            }
+        )
     except AnalyticsReportNotReadyError as e:
         return str(e)
     except ApiError as e:
