@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 
-from .analytics_report_source import AnalyticsReportNotReadyError
+from .analytics_report_source import AnalyticsReportNotReadyError, ensure_report_request
 from .client import ApiClient, ApiError
 from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
 from .tools.app_downloads import get_app_downloads_report
@@ -265,6 +265,51 @@ async def get_app_downloads_report_tool(
             access_type,
         )
         return _result(result)
+    except AnalyticsReportNotReadyError as e:
+        return str(e)
+    except ApiError as e:
+        if e.status_code == 403:
+            return (
+                "Creating or accessing this Analytics Report Request requires the Admin role "
+                "on this App Store Connect API key. Ask an Admin to grant access, or use a key "
+                "with Admin permissions."
+            )
+        return e.to_user_message()
+
+
+@mcp.tool(name="debug_list_app_downloads_instances")
+async def debug_list_app_downloads_instances_tool(
+    app_id: Annotated[str, "Apple app ID (numeric identifier)"],
+    detailed: Annotated[bool, "Look up the Detailed report instead of the Standard one"] = True,
+    granularity: Annotated[
+        Literal["DAILY", "WEEKLY", "MONTHLY"], "Report instance granularity"
+    ] = "DAILY",
+    access_type: Annotated[
+        Literal["ONGOING", "ONE_TIME_SNAPSHOT"],
+        "Which analyticsReportRequest to inspect",
+    ] = "ONGOING",
+) -> str:
+    """TEMPORARY diagnostic tool: finds the App Downloads report id for an app under the given
+    access_type's report request, then dumps the raw, unfiltered analyticsReportInstances list
+    (no processingDate filter) so we can see which dates actually have generated instances, and
+    whether the report itself has appeared yet. Remove once ONE_TIME_SNAPSHOT backfill timing is
+    understood."""
+    try:
+        client = _get_client()
+        request_id = await ensure_report_request(client, app_id, access_type=access_type)
+        reports = await client.list_analytics_reports(request_id)
+        report_id = None
+        for item in reports.get("data", []):
+            name = (item.get("attributes", {}).get("name") or "").strip().lower()
+            if "app downloads" not in name:
+                continue
+            if ("detailed" in name) == detailed:
+                report_id = item.get("id")
+                break
+        if report_id is None:
+            return _result({"report_request_id": request_id, "error": "report not found", "reports": reports})
+        instances = await client.list_report_instances(report_id, granularity=granularity)
+        return _result({"report_request_id": request_id, "report_id": report_id, "instances": instances})
     except AnalyticsReportNotReadyError as e:
         return str(e)
     except ApiError as e:
