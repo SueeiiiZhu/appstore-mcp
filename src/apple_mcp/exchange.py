@@ -11,7 +11,7 @@ _CACHE_TTL = 3600  # 1 hour
 _cache_timestamps: dict[str, float] = {}
 
 _API_URL = "https://open.er-api.com/v6/latest/USD"
-_HISTORICAL_API_URL = "https://api.frankfurter.app/{date}?from=USD"
+_HISTORICAL_API_URL = "https://api.frankfurter.dev/v1/{date}?from=USD"
 
 # Separate cache for historical rates (immutable once published, so no TTL needed).
 _historical_rate_cache: dict[str, dict[str, float]] = {}

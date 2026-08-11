@@ -58,7 +58,7 @@ def test_fetch_historical_rates_parses_and_inverts(monkeypatch):
 
     rates, actual_date = asyncio.run(fetch_historical_rates_to_usd("2026-04-08"))
 
-    assert "frankfurter.app" in captured["url"]
+    assert "frankfurter.dev" in captured["url"]
     assert actual_date == "2026-04-08"
     assert rates["USD"] == 1.0
     assert rates["EUR"] == pytest.approx(1 / 0.92)
