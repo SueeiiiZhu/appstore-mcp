@@ -5,6 +5,7 @@ import os
 import sys
 from typing import Annotated, Literal
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from .analytics_report_source import (
@@ -16,6 +17,7 @@ from .client import ApiClient, ApiError
 from .parsers import parse_app_downloads_report, parse_tsv
 from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
 from .tools.app_downloads import get_app_downloads_report
+from .tools.exchange import get_exchange_rates
 from .tools.finance import get_finance_report
 from .tools.installs import get_install_stats
 from .tools.revenue import get_revenue_summary
@@ -416,6 +418,21 @@ async def debug_dump_app_downloads_segment_tool(
                 "with Admin permissions."
             )
         return e.to_user_message()
+
+
+@mcp.tool(name="get_exchange_rates")
+async def get_exchange_rates_tool(
+    date: Annotated[str, "Date in YYYY-MM-DD format. Today's date returns realtime rates; any other date returns historical ECB reference rates."],
+    currency: Annotated[str | None, "Optional currency code to filter to (e.g. 'EUR'). Omit to get all rates."] = None,
+) -> str:
+    """Get exchange-to-USD rates for a given date (realtime for today, historical ECB reference rates otherwise)."""
+    try:
+        result = await get_exchange_rates(date, currency)
+        return _result(result)
+    except ValueError as e:
+        return str(e)
+    except httpx.HTTPError as e:
+        return f"Failed to fetch exchange rates: {e}"
 
 
 @mcp.tool(name="get_customer_reviews")
