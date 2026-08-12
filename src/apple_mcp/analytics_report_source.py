@@ -13,6 +13,7 @@ Handles the multi-step Analytics Reports flow used by reports such as
 """
 
 import asyncio
+from dataclasses import dataclass
 
 from .client import ApiClient, ApiError
 
@@ -81,7 +82,16 @@ async def _find_report_request_id(client: ApiClient, app_id: str, access_type: s
     return None
 
 
-async def resolve_app_downloads_segment_urls(
+@dataclass(frozen=True)
+class ResolvedSegments:
+    """Segment URLs plus the instance metadata they were resolved from."""
+
+    urls: list[str]
+    instance_id: str
+    processing_date: str
+
+
+async def resolve_app_downloads_segments(
     client: ApiClient,
     app_id: str,
     report_date: str,
@@ -89,8 +99,9 @@ async def resolve_app_downloads_segment_urls(
     detailed: bool = True,
     max_wait_seconds: int = 0,
     access_type: str = "ONGOING",
-) -> list[str]:
-    """Resolve pre-signed segment download URLs for the App Downloads report.
+) -> ResolvedSegments:
+    """Resolve pre-signed segment download URLs for the App Downloads report,
+    along with the matched instance's id and processingDate.
 
     access_type selects which analyticsReportRequest to use: "ONGOING" (data
     from ~24-48h after the request was first created, onward) or
@@ -116,8 +127,8 @@ async def resolve_app_downloads_segment_urls(
     delays = list(_POLL_BACKOFF_SECONDS)
 
     while True:
-        instance_id = await _find_instance_id(client, report_id, granularity, report_date)
-        if instance_id is not None:
+        instance = await _find_instance(client, report_id, granularity, report_date)
+        if instance is not None:
             break
 
         if remaining_wait <= 0 or not delays:
@@ -144,6 +155,9 @@ async def resolve_app_downloads_segment_urls(
         await asyncio.sleep(delay)
         remaining_wait -= delay
 
+    instance_id = instance.get("id")
+    processing_date = instance.get("attributes", {}).get("processingDate", report_date)
+
     segments = await client.list_report_segments(instance_id)
     urls = [
         item.get("attributes", {}).get("url")
@@ -154,7 +168,33 @@ async def resolve_app_downloads_segment_urls(
         raise AnalyticsReportNotReadyError(
             f"Report instance {instance_id} has no downloadable segments yet."
         )
-    return urls
+    return ResolvedSegments(urls=urls, instance_id=instance_id, processing_date=processing_date)
+
+
+async def resolve_app_downloads_segment_urls(
+    client: ApiClient,
+    app_id: str,
+    report_date: str,
+    granularity: str = "DAILY",
+    detailed: bool = True,
+    max_wait_seconds: int = 0,
+    access_type: str = "ONGOING",
+) -> list[str]:
+    """Resolve pre-signed segment download URLs for the App Downloads report.
+
+    Thin wrapper over resolve_app_downloads_segments() that drops instance
+    metadata, kept for callers that only need the URLs.
+    """
+    resolved = await resolve_app_downloads_segments(
+        client,
+        app_id,
+        report_date,
+        granularity=granularity,
+        detailed=detailed,
+        max_wait_seconds=max_wait_seconds,
+        access_type=access_type,
+    )
+    return resolved.urls
 
 
 async def _find_report_id(client: ApiClient, report_request_id: str, detailed: bool) -> str | None:
@@ -172,19 +212,19 @@ async def _find_report_id(client: ApiClient, report_request_id: str, detailed: b
     return None
 
 
-async def _find_instance_id(
+async def _find_instance(
     client: ApiClient, report_id: str, granularity: str, report_date: str
-) -> str | None:
+) -> dict | None:
     listing = await client.list_report_instances(report_id, granularity=granularity, processing_date=report_date)
     candidates = listing.get("data", [])
 
     # Prefer exact processingDate match if the server didn't already filter for us.
     for item in candidates:
         if item.get("attributes", {}).get("processingDate") == report_date:
-            return item.get("id")
+            return item
 
     # If the server-side filter[processingDate] was honored, any single result is fine.
     if len(candidates) == 1:
-        return candidates[0].get("id")
+        return candidates[0]
 
     return None

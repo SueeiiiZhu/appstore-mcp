@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ..analytics_report_source import resolve_app_downloads_segment_urls
+from ..analytics_report_source import ResolvedSegments, resolve_app_downloads_segments
 from ..cache import ReportCache
 from ..client import ApiClient
 from ..parsers import parse_app_downloads_report
@@ -29,14 +29,14 @@ async def _get_app_downloads_rows_internal(
     granularity: str = "DAILY",
     detailed: bool = True,
     access_type: str = "ONGOING",
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], ResolvedSegments]:
     cache_key = f"app_downloads:{app_id}:{report_date}:{granularity}:{detailed}:{access_type}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
 
     # Segment URLs are pre-signed and expire - never cache them, only the parsed rows below.
-    segment_urls = await resolve_app_downloads_segment_urls(
+    resolved = await resolve_app_downloads_segments(
         client,
         app_id,
         report_date,
@@ -46,12 +46,13 @@ async def _get_app_downloads_rows_internal(
     )
 
     rows: list[dict[str, Any]] = []
-    for url in segment_urls:
+    for url in resolved.urls:
         raw = await client.fetch_analytics_segment(url)
         rows.extend(parse_app_downloads_report(raw))
 
-    _cache.set(cache_key, rows)
-    return rows
+    result = (rows, resolved)
+    _cache.set(cache_key, result)
+    return result
 
 
 async def get_app_downloads_report(
@@ -62,10 +63,27 @@ async def get_app_downloads_report(
     granularity: str = "DAILY",
     detailed: bool = True,
     access_type: str = "ONGOING",
+    business_date: str | None = None,
 ) -> dict[str, Any]:
-    rows = await _get_app_downloads_rows_internal(
+    """Get App Store Downloads, optionally filtered to a single raw business_date.
+
+    report_date selects the Apple analyticsReportInstance (by processingDate);
+    an instance can still contain rows spanning multiple raw `Date` values.
+    If business_date is given, rows are filtered to raw Date == business_date
+    BEFORE aggregation, so Country/app/etc breakdowns and the WW total are
+    computed from the same filtered set and stay consistent with each other.
+    """
+    all_rows, resolved = await _get_app_downloads_rows_internal(
         client, app_id, report_date, granularity, detailed, access_type
     )
+
+    distinct_raw_dates = sorted({row.get("date") for row in all_rows if row.get("date")})
+
+    if business_date is not None:
+        rows = [row for row in all_rows if row.get("date") == business_date]
+    else:
+        rows = all_rows
+
     key_fn = _group_key_fn(group_by)
 
     groups: dict[str, int] = {}
@@ -82,5 +100,28 @@ async def get_app_downloads_report(
         key=lambda x: x["counts"],
         reverse=True,
     )
+    breakdown_sum = sum(item["counts"] for item in breakdown)
 
-    return {"total_downloads": total_downloads, "breakdown": breakdown}
+    result: dict[str, Any] = {
+        "total_downloads": total_downloads,
+        "breakdown": breakdown,
+        "processing_date": resolved.processing_date,
+        "instance_id": resolved.instance_id,
+        "distinct_raw_dates_before_filter": distinct_raw_dates,
+        "rows_before_filter": len(all_rows),
+        "rows_after_filter": len(rows),
+        "breakdown_sum_matches_total": breakdown_sum == total_downloads,
+    }
+
+    if business_date is not None:
+        result["business_date"] = business_date
+        if len(rows) == 0:
+            result["natural_empty"] = True
+            result["note"] = (
+                f"No rows with raw Date={business_date} found in this instance "
+                f"(processing_date={resolved.processing_date}, "
+                f"distinct raw dates present: {distinct_raw_dates}). "
+                "total_downloads=0 reflects a proven absence, not a cross-date total."
+            )
+
+    return result

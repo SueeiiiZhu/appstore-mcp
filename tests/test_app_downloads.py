@@ -374,3 +374,99 @@ def test_get_app_downloads_report_propagates_not_ready_error():
 
     with pytest.raises(AnalyticsReportNotReadyError):
         asyncio.run(app_downloads_tool.get_app_downloads_report(client, "app-1", "2026-04-08"))
+
+
+def test_get_app_downloads_report_surfaces_instance_metadata():
+    app_downloads_tool._cache.clear()
+    raw = (FIXTURES / "sample_app_downloads.tsv").read_text()
+    client = FakeAnalyticsClient(
+        existing_request_id="req-1",
+        reports=_standard_reports(),
+        instances=_standard_instances(),
+        segments=_standard_segments(),
+        segment_raw=raw,
+    )
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(client, "app-1", "2026-04-08")
+    )
+
+    assert result["processing_date"] == "2026-04-08"
+    assert result["instance_id"] == "inst-1"
+    assert result["distinct_raw_dates_before_filter"] == ["2026-04-08"]
+    assert result["rows_before_filter"] == 4
+    assert result["rows_after_filter"] == 4
+    assert result["breakdown_sum_matches_total"] is True
+
+
+# --- business_date filtering ------------------------------------------------------------
+
+
+_CROSS_DATE_TSV = (
+    "Date\tApp Name\tApp Apple Identifier\tDownload Type\tApp Version\tDevice\t"
+    "Platform Version\tSource Type\tSource Info\tCampaign\tPage Type\tPage Title\t"
+    "Pre-Order\tTerritory\tCounts\n"
+    "2026-08-05\tMy App\t123456789\tFirst-Time Download\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t100\n"
+    "2026-08-06\tMy App\t123456789\tFirst-Time Download\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t200\n"
+    "2026-08-07\tMy App\t123456789\tFirst-Time Download\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t30\n"
+    "2026-08-07\tMy App\t123456789\tRedownload\t1.0\tiPad\t17.4\t"
+    "App Store Browse\t\t\tProduct Page\t\tfalse\tJP\t8\n"
+)
+
+
+def test_get_app_downloads_report_business_date_filters_before_aggregation():
+    app_downloads_tool._cache.clear()
+    client = FakeAnalyticsClient(
+        existing_request_id="req-1",
+        reports=_standard_reports(),
+        instances=_standard_instances(date="2026-08-07"),
+        segments=_standard_segments(),
+        segment_raw=_CROSS_DATE_TSV,
+    )
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client, "app-1", "2026-08-07", group_by="territory", business_date="2026-08-07"
+        )
+    )
+
+    # Only the two 2026-08-07 rows (30 + 8) should count, not the cross-day total (338).
+    assert result["total_downloads"] == 38
+    assert result["business_date"] == "2026-08-07"
+    assert result["processing_date"] == "2026-08-07"
+    assert result["rows_before_filter"] == 4
+    assert result["rows_after_filter"] == 2
+    assert sorted(result["distinct_raw_dates_before_filter"]) == [
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+    ]
+    breakdown_by_key = {item["key"]: item["counts"] for item in result["breakdown"]}
+    assert breakdown_by_key == {"US": 30, "JP": 8}
+    assert result["breakdown_sum_matches_total"] is True
+    assert "natural_empty" not in result
+
+
+def test_get_app_downloads_report_business_date_natural_empty_when_no_rows_match():
+    app_downloads_tool._cache.clear()
+    client = FakeAnalyticsClient(
+        existing_request_id="req-1",
+        reports=_standard_reports(),
+        instances=_standard_instances(date="2026-08-07"),
+        segments=_standard_segments(),
+        segment_raw=_CROSS_DATE_TSV,
+    )
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client, "app-1", "2026-08-07", business_date="2026-08-09"
+        )
+    )
+
+    assert result["total_downloads"] == 0
+    assert result["rows_after_filter"] == 0
+    assert result["natural_empty"] is True
+    assert "2026-08-09" in result["note"]

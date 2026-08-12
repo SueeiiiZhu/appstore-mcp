@@ -259,6 +259,14 @@ async def get_app_downloads_report_tool(
         "Use ONE_TIME_SNAPSHOT for historical dates before that (Apple generally retains data "
         "back to 2024-01-01) - it creates a one-off backfill request, no new data after that.",
     ] = "ONGOING",
+    business_date: Annotated[
+        str | None,
+        "Optional YYYY-MM-DD raw business date. The matched report instance (by report_date/"
+        "processingDate) can contain rows spanning multiple raw Date values; if set, rows are "
+        "filtered to Date == business_date BEFORE aggregation, so the breakdown and total stay "
+        "consistent. Response also reports processing_date, instance_id, and the distinct raw "
+        "Date values seen before filtering, for auditing.",
+    ] = None,
 ) -> str:
     """Get App Store Downloads counts via the Analytics Reports API, with aggregation by app, territory, download type, or source type."""
     try:
@@ -270,6 +278,7 @@ async def get_app_downloads_report_tool(
             granularity,
             detailed,
             access_type,
+            business_date,
         )
         return _result(result)
     except AnalyticsReportNotReadyError as e:
