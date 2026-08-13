@@ -89,6 +89,7 @@ class ResolvedSegments:
     urls: list[str]
     instance_id: str
     processing_date: str
+    report_id: str
 
 
 async def resolve_app_downloads_segments(
@@ -168,7 +169,9 @@ async def resolve_app_downloads_segments(
         raise AnalyticsReportNotReadyError(
             f"Report instance {instance_id} has no downloadable segments yet."
         )
-    return ResolvedSegments(urls=urls, instance_id=instance_id, processing_date=processing_date)
+    return ResolvedSegments(
+        urls=urls, instance_id=instance_id, processing_date=processing_date, report_id=report_id
+    )
 
 
 async def resolve_app_downloads_segment_urls(

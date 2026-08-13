@@ -16,7 +16,7 @@ from .analytics_report_source import (
 from .client import ApiClient, ApiError
 from .parsers import parse_app_downloads_report, parse_tsv
 from .report_source import ReportSourceError, list_local_reports as list_local_reports_from_archive
-from .tools.app_downloads import get_app_downloads_report
+from .tools.app_downloads import InvalidDownloadTypeError, get_app_downloads_report
 from .tools.exchange import get_exchange_rates
 from .tools.finance import get_finance_report
 from .tools.installs import get_install_stats
@@ -267,6 +267,15 @@ async def get_app_downloads_report_tool(
         "consistent. Response also reports processing_date, instance_id, and the distinct raw "
         "Date values seen before filtering, for auditing.",
     ] = None,
+    download_type: Annotated[
+        str | None,
+        "Optional raw Download Type filter (one of 'First-time download', 'Redownload', "
+        "'Restore', 'Auto-update'; matching is case/hyphenation-insensitive). Applied to rows "
+        "AFTER the business_date filter and BEFORE aggregation, so breakdown and total stay "
+        "consistent with each other (no post-hoc proportional splitting). Omit for unfiltered, "
+        "backward-compatible behavior (all types summed). An unsupported value raises an "
+        "explicit INVALID_DOWNLOAD_TYPE error.",
+    ] = None,
 ) -> str:
     """Get App Store Downloads counts via the Analytics Reports API, with aggregation by app, territory, download type, or source type."""
     try:
@@ -279,8 +288,11 @@ async def get_app_downloads_report_tool(
             detailed,
             access_type,
             business_date,
+            download_type,
         )
         return _result(result)
+    except InvalidDownloadTypeError as e:
+        return str(e)
     except AnalyticsReportNotReadyError as e:
         return str(e)
     except ApiError as e:

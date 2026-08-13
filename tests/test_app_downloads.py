@@ -470,3 +470,169 @@ def test_get_app_downloads_report_business_date_natural_empty_when_no_rows_match
     assert result["rows_after_filter"] == 0
     assert result["natural_empty"] is True
     assert "2026-08-09" in result["note"]
+
+
+# --- download_type filtering -------------------------------------------------------------
+
+
+_TYPE_ISOLATION_TSV = (
+    "Date\tApp Name\tApp Apple Identifier\tDownload Type\tApp Version\tDevice\t"
+    "Platform Version\tSource Type\tSource Info\tCampaign\tPage Type\tPage Title\t"
+    "Pre-Order\tTerritory\tCounts\n"
+    "2026-07-23\tMy App\t123456789\tFirst-Time Download\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t150\n"
+    "2026-07-23\tMy App\t123456789\tFirst-Time Download\t1.0\tiPad\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tRU\t12\n"
+    "2026-07-23\tMy App\t123456789\tFirst-Time Download\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tGB\t9\n"
+    "2026-07-23\tMy App\t123456789\tRedownload\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t5\n"
+    "2026-07-23\tMy App\t123456789\tRestore\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t10\n"
+    "2026-07-23\tMy App\t123456789\tAuto-Update\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t293\n"
+    "2026-07-24\tMy App\t123456789\tFirst-Time Download\t1.0\tiPhone\t17.4\t"
+    "App Store Search\t\t\tProduct Page\t\tfalse\tUS\t999\n"
+)
+
+
+def _type_isolation_client():
+    return FakeAnalyticsClient(
+        existing_request_id="req-1",
+        reports=_standard_reports(),
+        instances=_standard_instances(date="2026-08-07"),
+        segments=_standard_segments(),
+        segment_raw=_TYPE_ISOLATION_TSV,
+    )
+
+
+def test_get_app_downloads_report_download_type_filters_before_aggregation():
+    app_downloads_tool._cache.clear()
+    client = _type_isolation_client()
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client,
+            "app-1",
+            "2026-08-07",
+            group_by="territory",
+            business_date="2026-07-23",
+            download_type="First-time download",
+        )
+    )
+
+    assert result["total_downloads"] == 171
+    breakdown_by_key = {item["key"]: item["counts"] for item in result["breakdown"]}
+    assert breakdown_by_key == {"US": 150, "RU": 12, "GB": 9}
+    assert result["breakdown_sum_matches_total"] is True
+    assert result["download_type"] == "First-time download"
+    assert result["business_date"] == "2026-07-23"
+    assert result["rows_before_filter"] == 7
+    assert result["rows_after_business_date_filter"] == 6
+    assert result["rows_after_download_type_filter"] == 3
+    assert "natural_empty" not in result
+    assert "app_id" in result
+    assert "report_id" in result
+    assert "source_segment_sha256" in result
+
+
+def test_get_app_downloads_report_download_type_redownload():
+    app_downloads_tool._cache.clear()
+    client = _type_isolation_client()
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client,
+            "app-1",
+            "2026-08-07",
+            group_by="territory",
+            business_date="2026-07-23",
+            download_type="Redownload",
+        )
+    )
+
+    assert result["total_downloads"] == 5
+    breakdown_by_key = {item["key"]: item["counts"] for item in result["breakdown"]}
+    assert breakdown_by_key == {"US": 5}
+    assert result["breakdown_sum_matches_total"] is True
+
+
+def test_get_app_downloads_report_download_type_isolation():
+    app_downloads_tool._cache.clear()
+    client = _type_isolation_client()
+
+    first_time = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client,
+            "app-1",
+            "2026-08-07",
+            business_date="2026-07-23",
+            download_type="First-time download",
+        )
+    )
+    keys = {item["key"] for item in first_time["breakdown"]}
+    assert keys == {"First-Time Download"} or keys == set()
+
+    # The grouping key when group_by defaults to download_type must only ever
+    # surface the requested type - no cross-contamination from other types.
+    redownload = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client,
+            "app-1",
+            "2026-08-07",
+            business_date="2026-07-23",
+            download_type="Redownload",
+        )
+    )
+    redownload_keys = {item["key"] for item in redownload["breakdown"]}
+    assert "First-Time Download" not in redownload_keys
+    assert "Restore" not in redownload_keys
+    assert "Auto-Update" not in redownload_keys
+
+
+def test_get_app_downloads_report_invalid_download_type_raises():
+    app_downloads_tool._cache.clear()
+    client = _type_isolation_client()
+
+    with pytest.raises(app_downloads_tool.InvalidDownloadTypeError, match="INVALID_DOWNLOAD_TYPE"):
+        asyncio.run(
+            app_downloads_tool.get_app_downloads_report(
+                client, "app-1", "2026-08-07", download_type="Not A Real Type"
+            )
+        )
+
+
+def test_get_app_downloads_report_download_type_natural_empty():
+    app_downloads_tool._cache.clear()
+    client = _type_isolation_client()
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client,
+            "app-1",
+            "2026-08-07",
+            business_date="2026-07-25",
+            download_type="Restore",
+        )
+    )
+
+    assert result["total_downloads"] == 0
+    assert result["breakdown"] == []
+    assert result["natural_empty"] is True
+    assert result["rows_after_download_type_filter"] == 0
+    assert result["breakdown_sum_matches_total"] is True
+
+
+def test_get_app_downloads_report_download_type_omitted_is_backward_compatible():
+    app_downloads_tool._cache.clear()
+    client = _type_isolation_client()
+
+    result = asyncio.run(
+        app_downloads_tool.get_app_downloads_report(
+            client, "app-1", "2026-08-07", business_date="2026-07-23"
+        )
+    )
+
+    assert result["total_downloads"] == 150 + 12 + 9 + 5 + 10 + 293
+    assert "download_type" not in result
+    assert result["rows_after_business_date_filter"] == result["rows_after_download_type_filter"]
